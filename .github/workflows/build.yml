@@ -19,7 +19,8 @@ jobs:
 
       - name: Extract any ZIP file
         run: |
-          ZIP_FILE=$(find . -maxdepth 2 -type f \((-name "*.zip" -o -name ".zip")\) | head -1)
+          # تصحيح صيغة البحث عن ملف ZIP
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -1)
           if [ -z "$ZIP_FILE" ]; then
             echo "❌ لم يتم العثور على ملف ZIP"
             exit 1
@@ -70,17 +71,23 @@ jobs:
       - name: Find APK
         id: find_apk
         run: |
-          APK=$(find . -name "app-release.apk" -type f | head -1)
+          PROJECT_DIR="${{ steps.find_pubspec.outputs.project_dir }}"
+          # البحث عن الـ APK داخل مسار المشروع تحديداً لتجنب التعارض
+          APK=$(find "$PROJECT_DIR" -name "app-release.apk" -type f | head -1)
           if [ -z "$APK" ]; then
             echo "❌ لم يتم إنشاء APK"
-            find . -name "*.apk" -type f
+            find "$PROJECT_DIR" -name "*.apk" -type f
             exit 1
           fi
           echo "✅ APK موجود في: $APK"
-          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          
+          # استخدام المسار المطلق (Absolute Path) لضمان نجاح عملية الرفع
+          ABSOLUTE_APK_PATH=$(realpath "$APK")
+          echo "apk_path=$ABSOLUTE_APK_PATH" >> $GITHUB_OUTPUT
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: ${{ steps.find_apk.outputs.apk_path }}
+          if-no-files-found: error # التأكد من ظهور خطأ إذا لم يتم العثور على الملف
