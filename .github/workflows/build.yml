@@ -12,12 +12,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: List files (للتأكد من المحتوى)
+      - name: Find project root
+        id: find_root
         run: |
-          echo "=== محتويات الجذر ==="
-          ls -la
-          echo "=== هل pubspec.yaml موجود؟ ==="
-          test -f pubspec.yaml && echo "نعم" || echo "لا"
+          echo "=== البحث عن pubspec.yaml ==="
+          ROOT=$(find . -name "pubspec.yaml" -not -path "*/build/*" -not -path "*/.dart_tool/*" | head -1)
+          if [ -z "$ROOT" ]; then
+            echo "❌ لم يُعثر على pubspec.yaml"
+            exit 1
+          fi
+          ROOT_DIR=$(dirname "$ROOT")
+          echo "✅ تم إيجاد المشروع في: $ROOT_DIR"
+          echo "root_dir=$ROOT_DIR" >> $GITHUB_OUTPUT
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -35,17 +41,26 @@ jobs:
         run: flutter --version
 
       - name: Get dependencies
+        working-directory: ${{ steps.find_root.outputs.root_dir }}
         run: flutter pub get
 
       - name: Build APK
+        working-directory: ${{ steps.find_root.outputs.root_dir }}
         run: flutter build apk --release
 
-      - name: Find APK
-        run: find . -name "*.apk" -type f
+      - name: Find APK file
+        id: find_apk
+        run: |
+          APK=$(find . -name "app-release.apk" -type f | head -1)
+          if [ -z "$APK" ]; then
+            echo "❌ لم يتم إنشاء APK"
+            exit 1
+          fi
+          echo "✅ APK موجود في: $APK"
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: warn
+          path: ${{ steps.find_apk.outputs.apk_path }}
