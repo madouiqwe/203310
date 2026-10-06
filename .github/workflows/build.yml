@@ -12,6 +12,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: List files (للتأكد من المحتوى)
+        run: |
+          echo "=== محتويات الجذر ==="
+          ls -la
+          echo "=== هل pubspec.yaml موجود؟ ==="
+          test -f pubspec.yaml && echo "نعم" || echo "لا"
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -21,8 +28,11 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.27.0'
           channel: 'stable'
+          cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
 
       - name: Get dependencies
         run: flutter pub get
@@ -30,8 +40,12 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
+      - name: Find APK
+        run: find . -name "*.apk" -type f
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: warn
