@@ -12,13 +12,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: List initial files
+        run: |
+          echo "=== محتويات المستودع ==="
+          ls -la
+
+      - name: Extract ZIP if exists
+        run: |
+          # البحث عن أي ملف ZIP في المستودع
+          ZIP_FILE=$(find . -maxdepth 3 -name "*.zip" -type f | head -1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "✅ وجدت ملف ZIP: $ZIP_FILE"
+            echo "جاري فك الضغط..."
+            unzip -o "$ZIP_FILE" -d extracted
+            echo "=== محتويات بعد فك الضغط ==="
+            ls -la extracted/
+          else
+            echo "لا يوجد ملف ZIP، سنعمل مباشرة على الملفات الحالية"
+          fi
+
       - name: Find project root
         id: find_root
         run: |
-          echo "=== البحث عن pubspec.yaml ==="
+          # ابحث عن pubspec.yaml في كل مكان
           ROOT=$(find . -name "pubspec.yaml" -not -path "*/build/*" -not -path "*/.dart_tool/*" | head -1)
           if [ -z "$ROOT" ]; then
             echo "❌ لم يُعثر على pubspec.yaml"
+            echo "=== كل الملفات في المستودع ==="
+            find . -type f -not -path "./.git/*" | head -50
             exit 1
           fi
           ROOT_DIR=$(dirname "$ROOT")
@@ -40,6 +61,10 @@ jobs:
       - name: Show Flutter version
         run: flutter --version
 
+      - name: List project files
+        working-directory: ${{ steps.find_root.outputs.root_dir }}
+        run: ls -la
+
       - name: Get dependencies
         working-directory: ${{ steps.find_root.outputs.root_dir }}
         run: flutter pub get
@@ -54,6 +79,7 @@ jobs:
           APK=$(find . -name "app-release.apk" -type f | head -1)
           if [ -z "$APK" ]; then
             echo "❌ لم يتم إنشاء APK"
+            find . -name "*.apk" -type f
             exit 1
           fi
           echo "✅ APK موجود في: $APK"
