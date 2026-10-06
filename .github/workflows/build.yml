@@ -12,37 +12,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: List files
-        run: |
-          echo "=== محتويات المستودع ==="
-          ls -la
-
-      - name: Extract ZIP if exists
-        run: |
-          ZIP_FILE=$(find . -maxdepth 3 -name "*.zip" -type f | head -1)
-          if [ -n "$ZIP_FILE" ]; then
-            echo "✅ وجدت ZIP: $ZIP_FILE"
-            unzip -o "$ZIP_FILE" -d extracted
-            echo "=== بعد فك الضغط ==="
-            ls -la extracted/
-          else
-            echo "لا يوجد ZIP"
-          fi
-
-      - name: Find project root
-        id: find_root
-        run: |
-          ROOT=$(find . -name "pubspec.yaml" -not -path "*/build/*" -not -path "*/.dart_tool/*" | head -1)
-          if [ -z "$ROOT" ]; then
-            echo "❌ لم يُعثر على pubspec.yaml"
-            echo "=== كل الملفات ==="
-            find . -type f -not -path "./.git/*" | head -50
-            exit 1
-          fi
-          ROOT_DIR=$(dirname "$ROOT")
-          echo "✅ المشروع في: $ROOT_DIR"
-          echo "root_dir=$ROOT_DIR" >> $GITHUB_OUTPUT
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -59,12 +28,17 @@ jobs:
         run: flutter --version
 
       - name: Get dependencies
-        working-directory: ${{ steps.find_root.outputs.root_dir }}
+        working-directory: ${{ steps.find_root.outputs.root_dir || '.' }}
         run: flutter pub get
 
       - name: Build APK
-        working-directory: ${{ steps.find_root.outputs.root_dir }}
+        working-directory: ${{ steps.find_root.outputs.root_dir || '.' }}
         run: flutter build apk --release
+
+      # هذا الجزء الجديد: يعرض السجل الكامل عند الفشل
+      - name: Show full build log on failure
+        if: failure()
+        run: cat build/app/outputs/logs/*.log || echo "No log file found"
 
       - name: Find APK
         id: find_apk
