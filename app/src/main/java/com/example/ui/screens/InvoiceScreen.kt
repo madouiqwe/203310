@@ -138,6 +138,22 @@ fun InvoiceScreen(
     val changeAmount = (paidAmount - grandTotal).coerceAtLeast(0.0)
     val remainingAmount = if (isPaid) 0.0 else (grandTotal - paidAmount).coerceAtLeast(0.0)
 
+    var inlineItemName by remember { mutableStateOf("") }
+    var inlineItemQty by remember { mutableStateOf("1") }
+    var inlineItemPrice by remember { mutableStateOf("") }
+    var inlineDropdownExpanded by remember { mutableStateOf(false) }
+    val inlineQtyFocusRequester = remember { FocusRequester() }
+
+    val inlineMatchingProducts = remember(inlineItemName, products) {
+        if (inlineItemName.isBlank()) emptyList()
+        else {
+            val q = inlineItemName.trim()
+            val starts = products.filter { it.name.startsWith(q) || it.barcode.startsWith(q) }
+            val contains = products.filter { (!it.name.startsWith(q) && !it.barcode.startsWith(q)) && (it.name.contains(q, ignoreCase = true) || it.barcode.contains(q)) }
+            starts + contains
+        }
+    }
+
     fun resetInvoice() {
         customerName = ""
         invoiceNumber = FormatUtils.generateInvoiceNumber()
@@ -456,6 +472,142 @@ fun InvoiceScreen(
                                     colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // Inline Direct Item Input with Autocomplete
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "إضافة صنف سريعاً (إكمال تلقائي فوري):",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // Autocomplete Box
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = inlineItemName,
+                            onValueChange = {
+                                inlineItemName = it
+                                inlineDropdownExpanded = it.isNotBlank() && inlineMatchingProducts.isNotEmpty()
+                            },
+                            label = { Text("اسم السلعة (اكتب أول حرف)") },
+                            placeholder = { Text("مثال: قهوة، شاي، سكر...") },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("inline_item_name_input")
+                        )
+
+                        DropdownMenu(
+                            expanded = inlineDropdownExpanded && inlineMatchingProducts.isNotEmpty(),
+                            onDismissRequest = { inlineDropdownExpanded = false },
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .heightIn(max = 240.dp)
+                        ) {
+                            inlineMatchingProducts.forEach { prod ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(prod.name, fontWeight = FontWeight.Bold)
+                                                if (prod.category.isNotBlank() && prod.category != "عام") {
+                                                    Text(prod.category, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                                }
+                                            }
+                                            Text(
+                                                FormatUtils.formatCurrency(prod.defaultPrice, settings.currencySymbol),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        inlineItemName = prod.name
+                                        inlineItemPrice = if (prod.defaultPrice % 1 == 0.0) prod.defaultPrice.toInt().toString() else prod.defaultPrice.toString()
+                                        inlineDropdownExpanded = false
+                                        scope.launch {
+                                            delay(100)
+                                            try { inlineQtyFocusRequester.requestFocus() } catch (_: Exception) {}
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = inlineItemQty,
+                            onValueChange = { inlineItemQty = it },
+                            label = { Text("الكمية") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(inlineQtyFocusRequester)
+                                .testTag("inline_item_qty_input")
+                        )
+
+                        OutlinedTextField(
+                            value = inlineItemPrice,
+                            onValueChange = { inlineItemPrice = it },
+                            label = { Text("السعر (${settings.currencySymbol})") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("inline_item_price_input")
+                        )
+
+                        Button(
+                            onClick = {
+                                val p = inlineItemPrice.toDoubleOrNull()
+                                val q = inlineItemQty.toDoubleOrNull() ?: 1.0
+                                val n = inlineItemName.trim()
+                                if (n.isEmpty()) {
+                                    scope.launch { snackbarHostState.showSnackbar("أدخل اسم السلعة") }
+                                } else if (p == null || p < 0) {
+                                    scope.launch { snackbarHostState.showSnackbar("أدخل سعراً صحيحاً") }
+                                } else {
+                                    invoiceItems.add(InvoiceItem(name = n, qty = q, price = p))
+                                    viewModel.addProduct(n, p)
+                                    inlineItemName = ""
+                                    inlineItemPrice = ""
+                                    inlineItemQty = "1"
+                                    scope.launch { snackbarHostState.showSnackbar("تمت إضافة $n للفاتورة") }
+                                }
+                            },
+                            modifier = Modifier
+                                .height(56.dp)
+                                .testTag("inline_add_item_button")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("إضافة")
                         }
                     }
                 }
