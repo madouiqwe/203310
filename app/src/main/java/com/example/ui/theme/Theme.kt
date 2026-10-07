@@ -8,48 +8,54 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme =
-  darkColorScheme(
-    primary = TealPrimaryDark,
-    onPrimary = TealOnPrimaryDark,
-    primaryContainer = TealPrimaryContainerDark,
-    onPrimaryContainer = TealOnPrimaryContainerDark,
-    secondary = TealSecondaryDark,
-    secondaryContainer = TealSecondaryContainerDark
-  )
+private val DarkColorScheme = darkColorScheme(
+    primary = BluePrimaryDark,
+    primaryContainer = BluePrimaryContainerDark,
+    onPrimaryContainer = Color(0xFFDBEAFE),
+    secondary = EmeraldSecondaryDark,
+    tertiary = AmberTertiaryDark,
+    background = DarkBackground,
+    surface = DarkSurface,
+    surfaceVariant = DarkSurfaceVariant
+)
 
-private val LightColorScheme =
-  lightColorScheme(
-    primary = TealPrimary,
-    onPrimary = TealOnPrimary,
-    primaryContainer = TealPrimaryContainer,
-    onPrimaryContainer = TealOnPrimaryContainer,
-    secondary = TealSecondary,
-    onSecondary = TealOnSecondary,
-    secondaryContainer = TealSecondaryContainer,
-    onSecondaryContainer = TealOnSecondaryContainer,
-    tertiary = TealTertiary,
-    tertiaryContainer = TealTertiaryContainer
-  )
+private val LightColorScheme = lightColorScheme(
+    primary = BluePrimary,
+    onPrimary = Color.White,
+    primaryContainer = BluePrimaryContainer,
+    onPrimaryContainer = OnBluePrimaryContainer,
+    secondary = EmeraldSecondary,
+    secondaryContainer = EmeraldSecondaryContainer,
+    onSecondaryContainer = OnEmeraldSecondaryContainer,
+    tertiary = AmberTertiary,
+    tertiaryContainer = AmberTertiaryContainer,
+    onTertiaryContainer = OnAmberTertiaryContainer,
+    background = NeutralBackground,
+    surface = NeutralSurface,
+    surfaceVariant = NeutralSurfaceVariant
+)
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = isSystemInDarkTheme(),
-  dynamicColor: Boolean = false,
-  content: @Composable () -> Unit,
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false, // Use our tailored theme for consistent branding
+    content: @Composable () -> Unit,
 ) {
-  val colorScheme =
-    when {
-      dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-        val context = LocalContext.current
-        if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-      }
-
-      darkTheme -> DarkColorScheme
-      else -> LightColorScheme
+    val colorScheme = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> DarkColorScheme
+        else -> LightColorScheme
     }
 
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+    MaterialTheme(
+        colorScheme = colorScheme,
+        typography = Typography,
+        content = content
+    )
 }
