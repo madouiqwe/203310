@@ -2,8 +2,8 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, master ] # يتحفز عند الدفع لهذه الفروع
-  workflow_dispatch: # يسمح بالتشغيل اليدوي من تبويب Actions
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -11,109 +11,83 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. سحب الكود من المستودع
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. تحليل هيكل المشروع واستخراج الملفات إذا لزم الأمر
       - name: Analyze Project Structure & Extract if needed
         id: setup_project
         run: |
           echo "🔍 Checking project structure..."
           
-          # البحث عن pubspec.yaml في الجذر أولاً
-          if [ -f "pubspec.yaml" ]; then
+          if [ -f "quick_invoice_v5.zip" ]; then
+            echo "📦 Found quick_invoice_v5.zip. Extracting latest version..."
+            EXTRACT_DIR="extracted_project"
+            mkdir -p "$EXTRACT_DIR"
+            unzip -o "quick_invoice_v5.zip" -d "$EXTRACT_DIR"
+            PROJECT_DIR="$EXTRACT_DIR"
+          elif [ -f "pubspec.yaml" ]; then
             echo "✅ Found pubspec.yaml in root."
             PROJECT_DIR="."
           else
-            # البحث عن أي ملف zip في المستويات الأولى وفكه
             ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
-            
             if [ ! -z "$ZIP_FILE" ]; then
               echo "📦 Found ZIP: $ZIP_FILE. Extracting..."
               EXTRACT_DIR="extracted_project"
               mkdir -p "$EXTRACT_DIR"
               unzip -o "$ZIP_FILE" -d "$EXTRACT_DIR"
-              
-              # البحث عن pubspec.yaml داخل المجلد المستخرج
               PUBSPEC_IN_ZIP=$(find "$EXTRACT_DIR" -maxdepth 3 -name "pubspec.yaml" -not -path "*/build/*" -not -path "*/.dart_tool/*" | head -n 1)
-              
-              if [ ! -z "$PUBSPEC_IN_ZIP" ]; then
-                PROJECT_DIR=$(dirname "$PUBSPEC_IN_ZIP")
-                echo "✅ Found pubspec.yaml inside ZIP at: $PROJECT_DIR"
-              else
-                echo "❌ Error: Could not find pubspec.yaml even after extracting ZIP."
-                exit 1
-              fi
+              PROJECT_DIR=$(dirname "$PUBSPEC_IN_ZIP")
             else
-              echo "❌ Error: No pubspec.yaml found in root and no ZIP file found to extract."
-              ls -la
+              echo "❌ Error: No project found"
               exit 1
             fi
           fi
           
-          # تخزين المسار النهائي للمشروع للمراحل التالية
           echo "project_dir=$PROJECT_DIR" >> $GITHUB_OUTPUT
-          echo " Working directory will be: $PROJECT_DIR"
+          echo "Working directory will be: $PROJECT_DIR"
 
-      # 3. إعداد بيئة Java (مطلوب لبناء أندرويد)
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin' # توصية للاستقرار في CI
-          java-version: '17'      # متوافق مع معظم مشاريع Flutter الحديثة
+          distribution: 'temurin'
+          java-version: '17'
 
-      # 4. إعداد بيئة Flutter
       - name: Setup Flutter SDK
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'       # استخدام النسخة المستقرة
-          cache: true             # تفعيل التخزين المؤقت لتسريع البناءات القادمة
+          channel: 'stable'
+          cache: true
 
-      # 5. عرض الإصدارات للتأكد من البيئة
-      - name: Show Environment Versions
-        run: |
-          flutter --version
-          java -version
-
-      # 6. تنظيف وتثبيت الحزم
       - name: Clean and Install Dependencies
         working-directory: ${{ steps.setup_project.outputs.project_dir }}
         run: |
           flutter clean
           flutter pub get
 
-      # 7. بناء ملف APK
       - name: Build Release APK
         working-directory: ${{ steps.setup_project.outputs.project_dir }}
         run: |
-          # بناء APK موحد (Universal) بدون تقسيم حسب المعماريات لتبسيط التنزيل
-          # إذا أردت تقليل الحجم، استخدم --split-per-abi
           flutter build apk --release
 
-      # 8. تحديد مسار ملف APK الناتج
       - name: Locate Built APK
         id: find_apk
         working-directory: ${{ steps.setup_project.outputs.project_dir }}
         run: |
           APK_PATH="build/app/outputs/flutter-apk/app-release.apk"
-          
           if [ -f "$APK_PATH" ]; then
             ABSOLUTE_PATH=$(realpath "$APK_PATH")
             SIZE=$(du -h "$ABSOLUTE_PATH" | cut -f1)
             echo "✅ Success! APK created at: $ABSOLUTE_PATH (Size: $SIZE)"
             echo "apk_path=$ABSOLUTE_PATH" >> $GITHUB_OUTPUT
           else
-            echo "❌ Failed to find APK at expected location: $APK_PATH"
-            ls -R build/app/outputs || true
+            echo "❌ Failed to find APK"
             exit 1
           fi
 
-      # 9. رفع الـ APK كأداة قابلة للتنزيل (Artifact)
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk-${{ github.run_number }} # اسم فريد لكل عملية بناء
+          name: app-release-apk-v2
           path: ${{ steps.find_apk.outputs.apk_path }}
-          retention-days: 7 # الاحتفاظ بالملف لمدة 7 أيام فقط لتوفير مساحة التخزين
-          if-no-files-found: error # فشل العملية إذا لم يجد الملف (للتأكد من النجاح)
+          retention-days: 7
+          if-no-files-found: error
