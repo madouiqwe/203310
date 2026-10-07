@@ -48,6 +48,7 @@ object FormatUtils {
         if (settings.companyPhone.isNotBlank()) sb.append("📞 *هاتف:* ${settings.companyPhone}\n")
         sb.append("👤 *العميل:* ${invoice.customer}\n")
         sb.append("📅 *التاريخ:* ${invoice.date}\n")
+        sb.append("💳 *طريقة الدفع:* ${invoice.paymentMethod}\n")
         sb.append("----------------------------\n")
         sb.append("📦 *الأصناف:*\n")
         items.forEachIndexed { i, it ->
@@ -63,7 +64,10 @@ object FormatUtils {
             sb.append("الضريبة (${invoice.taxRate}%): +${formatCurrency(invoice.taxAmount, settings.currencySymbol)}\n")
         }
         sb.append("💰 *الإجمالي النهائي: ${formatCurrency(invoice.total, settings.currencySymbol)}*\n")
-        sb.append("الحالة: ${if (invoice.isPaid) "مدفوعة ✅" else "غير مدفوعة ⏳"}\n")
+        sb.append("الحالة: ${if (invoice.isPaid) "مدفوعة بالكامل ✅" else "غير مدفوعة ⏳"}\n")
+        if (invoice.remainingAmount > 0) {
+            sb.append("المتبقي: ${formatCurrency(invoice.remainingAmount, settings.currencySymbol)}\n")
+        }
         if (invoice.notes.isNotBlank()) {
             sb.append("ملاحظات: ${invoice.notes}\n")
         }
@@ -126,7 +130,7 @@ object FormatUtils {
                 .header { display: flex; justify-content: space-between; border-bottom: 2px solid #006a60; padding-bottom: 12px; margin-bottom: 16px; }
                 .title { font-size: 26px; font-weight: bold; color: #006a60; }
                 .company-info { text-align: left; }
-                .details-box { background-color: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 20px; }
+                .details-box { background-color: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; }
                 table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
                 th { background-color: #006a60; color: white; padding: 10px; border: 1px solid #006a60; }
                 .totals { margin-top: 16px; text-align: left; }
@@ -152,9 +156,12 @@ object FormatUtils {
             </div>
 
             <div class="details-box">
-                <div>العميل: <strong>${invoice.customer}</strong></div>
-                <div style="margin-top: 6px;">
-                    حالة الدفع: 
+                <div>
+                    <div>العميل: <strong>${invoice.customer}</strong></div>
+                    <div style="margin-top: 4px;">طريقة الدفع: <strong>${invoice.paymentMethod}</strong></div>
+                </div>
+                <div>
+                    حالة الفاتورة: 
                     <span class="status-badge ${if (invoice.isPaid) "paid" else "unpaid"}">
                         ${if (invoice.isPaid) "مدفوعة" else "غير مدفوعة"}
                     </span>
@@ -180,7 +187,8 @@ object FormatUtils {
                 ${if (invoice.discount > 0) "<div>الخصم: -<strong>${formatCurrency(invoice.discount, settings.currencySymbol)}</strong></div>" else ""}
                 ${if (invoice.taxRate > 0) "<div>الضريبة (${invoice.taxRate}%): +<strong>${formatCurrency(invoice.taxAmount, settings.currencySymbol)}</strong></div>" else ""}
                 <hr style="border-top: 1px solid #ddd; margin: 8px 0; width: 250px; margin-inline-start: auto;">
-                <div class="grand-total">الإجمالي: ${formatCurrency(invoice.total, settings.currencySymbol)}</div>
+                <div class="grand-total">الإجمالي النهائي: ${formatCurrency(invoice.total, settings.currencySymbol)}</div>
+                ${if (invoice.remainingAmount > 0) "<div style='color: red; margin-top: 4px;'>المتبقي: ${formatCurrency(invoice.remainingAmount, settings.currencySymbol)}</div>" else ""}
             </div>
 
             ${if (invoice.notes.isNotBlank()) "<div style='margin-top: 20px; padding: 10px; background: #eee; border-radius: 6px;'>ملاحظات: ${invoice.notes}</div>" else ""}

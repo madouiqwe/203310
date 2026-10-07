@@ -28,17 +28,38 @@ class InvoiceRepository(private val context: Context) {
 
     // Products
     val allProducts: Flow<List<ProductItem>> = productDao.getAllProducts()
+    val allCategories: Flow<List<String>> = productDao.getAllCategories()
 
     fun searchProducts(query: String): Flow<List<ProductItem>> = productDao.searchProducts(query)
 
-    suspend fun addProduct(name: String, price: Double): Long = withContext(Dispatchers.IO) {
+    fun getProductsByCategory(category: String): Flow<List<ProductItem>> =
+        productDao.getProductsByCategory(category)
+
+    suspend fun addProduct(
+        name: String,
+        price: Double,
+        category: String = "عام",
+        barcode: String = ""
+    ): Long = withContext(Dispatchers.IO) {
         val existing = productDao.getProductByName(name.trim())
         if (existing != null) {
-            val updated = existing.copy(name = name.trim(), defaultPrice = price)
+            val updated = existing.copy(
+                name = name.trim(),
+                defaultPrice = price,
+                category = if (category.isNotBlank()) category else existing.category,
+                barcode = if (barcode.isNotBlank()) barcode else existing.barcode
+            )
             productDao.updateProduct(updated)
             existing.id
         } else {
-            productDao.insertProduct(ProductItem(name = name.trim(), defaultPrice = price))
+            productDao.insertProduct(
+                ProductItem(
+                    name = name.trim(),
+                    defaultPrice = price,
+                    category = if (category.isNotBlank()) category else "عام",
+                    barcode = barcode.trim()
+                )
+            )
         }
     }
 
@@ -52,6 +73,10 @@ class InvoiceRepository(private val context: Context) {
 
     suspend fun deleteProductById(id: Long) = withContext(Dispatchers.IO) {
         productDao.deleteById(id)
+    }
+
+    suspend fun insertPresetProducts(presets: List<ProductItem>) = withContext(Dispatchers.IO) {
+        productDao.insertAll(presets)
     }
 
     // Invoices
@@ -118,7 +143,7 @@ class InvoiceRepository(private val context: Context) {
     suspend fun exportJson(): String = withContext(Dispatchers.IO) {
         val invoices = invoiceDao.getAllInvoices()
         val root = JSONObject()
-        root.put("version", 1)
+        root.put("version", 2)
         root.put("exported_at", System.currentTimeMillis())
         val invArray = JSONArray()
         for (inv in invoices) {
@@ -131,6 +156,8 @@ class InvoiceRepository(private val context: Context) {
             obj.put("discount", inv.discount)
             obj.put("taxRate", inv.taxRate)
             obj.put("status", inv.status)
+            obj.put("paymentMethod", inv.paymentMethod)
+            obj.put("paidAmount", inv.paidAmount)
             obj.put("notes", inv.notes)
             obj.put("createdAt", inv.createdAt)
             if (inv.deletedAt != null) obj.put("deletedAt", inv.deletedAt)
@@ -156,6 +183,8 @@ class InvoiceRepository(private val context: Context) {
                     discount = obj.optDouble("discount", 0.0),
                     taxRate = obj.optDouble("taxRate", 0.0),
                     status = obj.optString("status", "unpaid"),
+                    paymentMethod = obj.optString("paymentMethod", "نقداً"),
+                    paidAmount = obj.optDouble("paidAmount", 0.0),
                     notes = obj.optString("notes", ""),
                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                     deletedAt = if (obj.has("deletedAt")) obj.optLong("deletedAt") else null

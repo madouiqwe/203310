@@ -16,7 +16,9 @@ data class InvoiceEntity(
     val discount: Double = 0.0,
     val taxRate: Double = 0.0,
     val status: String = "unpaid", // "paid" or "unpaid"
+    val paymentMethod: String = "نقداً", // "نقداً", "بطاقة", "تحويل", "آجل"
     val notes: String = "",
+    val paidAmount: Double = 0.0,
     val createdAt: Long = System.currentTimeMillis(),
     val deletedAt: Long? = null
 ) {
@@ -32,7 +34,10 @@ data class InvoiceEntity(
         get() = subtotal * (taxRate / 100.0)
 
     val total: Double
-        get() = subtotal - discount + taxAmount
+        get() = (subtotal - discount + taxAmount).coerceAtLeast(0.0)
+
+    val remainingAmount: Double
+        get() = if (isPaid) 0.0 else (total - paidAmount).coerceAtLeast(0.0)
 }
 
 object InvoiceJsonAdapter {

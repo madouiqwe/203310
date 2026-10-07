@@ -34,6 +34,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,16 +44,23 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.viewmodel.InvoiceViewModel
+import com.example.util.FormatUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    viewModel: InvoiceViewModel,
     onNavigateToQuickCalc: () -> Unit,
     onNavigateToInvoice: () -> Unit,
     onNavigateToSavedInvoices: () -> Unit,
     onNavigateToProducts: () -> Unit,
     onNavigateToSettings: () -> Unit
 ) {
+    val stats by viewModel.salesStats.collectAsState()
+    val products by viewModel.allProducts.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -84,17 +93,93 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 20.dp, vertical = 12.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(4.dp))
+            // Quick Business KPI summary
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${products.size}",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Text(
+                            text = "سلعة مسجلة",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(30.dp)
+                    ) {
+                        Surface(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), modifier = Modifier.fillMaxSize()) {}
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${stats.totalInvoicesCount}",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1565C0)
+                            )
+                        )
+                        Text(
+                            text = "فاتورة محررة",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(30.dp)
+                    ) {
+                        Surface(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), modifier = Modifier.fillMaxSize()) {}
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = FormatUtils.formatCurrency(stats.totalRevenue, settings.currencySymbol),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                        )
+                        Text(
+                            text = "المبيعات المحصلة",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            }
 
             // Quick Mode Card
             HomeMenuCard(
                 title = "الوضع السريع",
-                subtitle = "حساب سريع وإيصال فوري",
+                subtitle = "حساب سريع، آلة حاسبة، وإيصال فوري",
                 icon = Icons.Default.Bolt,
                 iconColor = Color(0xFFE65100),
                 backgroundColor = Color(0xFFFFF3E0),
@@ -105,7 +190,7 @@ fun HomeScreen(
             // Full Invoice Card
             HomeMenuCard(
                 title = "فاتورة كاملة",
-                subtitle = "فاتورة احترافية بكل التفاصيل",
+                subtitle = "فاتورة احترافية، إكمال تلقائي، وطباعة",
                 icon = Icons.Default.ReceiptLong,
                 iconColor = Color(0xFF006A60),
                 backgroundColor = Color(0xFFE0F2F1),
@@ -116,7 +201,7 @@ fun HomeScreen(
             // Saved Invoices Card
             HomeMenuCard(
                 title = "الفواتير المحفوظة",
-                subtitle = "عرض، بحث، وإدارة الفواتير",
+                subtitle = "عرض، بحث، تصنيفات، وإدارة الفواتير",
                 icon = Icons.Default.History,
                 iconColor = Color(0xFF1565C0),
                 backgroundColor = Color(0xFFE3F2FD),
@@ -127,7 +212,7 @@ fun HomeScreen(
             // Products Catalog Card (دليل السلع والمنتجات)
             HomeMenuCard(
                 title = "دليل السلع والمنتجات",
-                subtitle = "إضافة وتعديل وحذف والبحث في السلع",
+                subtitle = "إضافة وتعديل وحذف وفئات وباركود السلع",
                 icon = Icons.Default.Inventory2,
                 iconColor = Color(0xFF2E7D32),
                 backgroundColor = Color(0xFFE8F5E9),
@@ -135,10 +220,10 @@ fun HomeScreen(
                 onClick = onNavigateToProducts
             )
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "فاتورة سريعة v1.0",
+                text = "فاتورة سريعة v2.0 • نظام إدارة الفواتير والمبيعات",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline
             )
@@ -170,11 +255,11 @@ fun HomeMenuCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(18.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(56.dp),
+                modifier = Modifier.size(54.dp),
                 shape = RoundedCornerShape(14.dp),
                 color = backgroundColor
             ) {
@@ -183,7 +268,7 @@ fun HomeMenuCard(
                         imageVector = icon,
                         contentDescription = title,
                         tint = iconColor,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }

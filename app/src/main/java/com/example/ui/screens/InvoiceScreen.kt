@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,10 +25,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Money
 import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -111,6 +112,8 @@ fun InvoiceScreen(
     var discountText by remember { mutableStateOf("0") }
     var taxRateText by remember { mutableStateOf("0") }
     var isPaid by remember { mutableStateOf(false) }
+    var paymentMethod by remember { mutableStateOf("نقداً") } // "نقداً", "بطاقة", "تحويل", "آجل"
+    var paidAmountText by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
 
     val invoiceItems = remember {
@@ -131,6 +134,10 @@ fun InvoiceScreen(
     val taxAmount = subtotal * (taxRate / 100.0)
     val grandTotal = (subtotal - discount + taxAmount).coerceAtLeast(0.0)
 
+    val paidAmount = paidAmountText.toDoubleOrNull() ?: (if (isPaid) grandTotal else 0.0)
+    val changeAmount = (paidAmount - grandTotal).coerceAtLeast(0.0)
+    val remainingAmount = if (isPaid) 0.0 else (grandTotal - paidAmount).coerceAtLeast(0.0)
+
     fun resetInvoice() {
         customerName = ""
         invoiceNumber = FormatUtils.generateInvoiceNumber()
@@ -138,6 +145,8 @@ fun InvoiceScreen(
         discountText = "0"
         taxRateText = "0"
         isPaid = false
+        paymentMethod = "نقداً"
+        paidAmountText = ""
         notes = ""
         invoiceItems.clear()
     }
@@ -152,6 +161,8 @@ fun InvoiceScreen(
             discount = discount,
             taxRate = taxRate,
             status = if (isPaid) "paid" else "unpaid",
+            paymentMethod = paymentMethod,
+            paidAmount = paidAmount,
             notes = notes
         )
     }
@@ -302,13 +313,43 @@ fun InvoiceScreen(
                         )
                     }
 
+                    // Payment Method & Status
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "طريقة الدفع:",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("نقداً", "بطاقة", "تحويل", "آجل").forEach { method ->
+                                FilterChip(
+                                    selected = paymentMethod == method,
+                                    onClick = { paymentMethod = method },
+                                    label = { Text(method) },
+                                    leadingIcon = {
+                                        when (method) {
+                                            "نقداً" -> Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            "بطاقة" -> Icon(Icons.Default.CreditCard, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            else -> Icon(Icons.Default.Money, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     // Payment Status selector
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "حالة الدفع:",
+                            text = "حالة الفاتورة:",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(end = 12.dp)
@@ -336,6 +377,41 @@ fun InvoiceScreen(
                             modifier = Modifier.testTag("status_paid_chip")
                         )
                     }
+
+                    // Cash received & Change calculator
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = paidAmountText,
+                            onValueChange = { paidAmountText = it },
+                            label = { Text("المبلغ المستلم (${settings.currencySymbol})") },
+                            placeholder = { Text(if (isPaid) grandTotal.toString() else "0") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (changeAmount > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = if (changeAmount > 0) "الباقي للعميل:" else "المتبقي على العميل:",
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    text = FormatUtils.formatCurrency(if (changeAmount > 0) changeAmount else remainingAmount, settings.currencySymbol),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (changeAmount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -359,7 +435,7 @@ fun InvoiceScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            products.take(12).forEach { prod ->
+                            products.take(14).forEach { prod ->
                                 AssistChip(
                                     onClick = {
                                         val existingIndex = invoiceItems.indexOfFirst { it.name == prod.name && it.price == prod.defaultPrice }
@@ -377,9 +453,7 @@ fun InvoiceScreen(
                                     leadingIcon = {
                                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
                                     },
-                                    colors = AssistChipDefaults.assistChipColors(
-                                        containerColor = MaterialTheme.colorScheme.surface
-                                    )
+                                    colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
                                 )
                             }
                         }
@@ -464,7 +538,8 @@ fun InvoiceScreen(
             OutlinedTextField(
                 value = notes,
                 onValueChange = { notes = it },
-                label = { Text("ملاحظات الفاتورة (اختياري)") },
+                label = { Text("ملاحظات وشروط الفاتورة (اختياري)") },
+                placeholder = { Text("مثال: البضاعة المباعة ترد أو تستبدل خلال 3 أيام...") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -473,10 +548,10 @@ fun InvoiceScreen(
         }
     }
 
-    // Add / Edit Item Dialog with Autocomplete
+    // Add / Edit Item Dialog with Enhanced Autocomplete
     if (showItemDialog) {
         val editingItem = editingItemIndex?.let { invoiceItems.getOrNull(it) }
-        InvoiceItemAutocompleteDialog(
+        InvoiceItemAutocompleteDialogEnhanced(
             initialItem = editingItem,
             products = products,
             currencySymbol = settings.currencySymbol,
@@ -484,7 +559,7 @@ fun InvoiceScreen(
                 showItemDialog = false
                 editingItemIndex = null
             },
-            onSave = { newItem, saveToProductsCatalog ->
+            onSave = { newItem, saveToProductsCatalog, category ->
                 if (editingItemIndex != null && editingItemIndex!! in invoiceItems.indices) {
                     invoiceItems[editingItemIndex!!] = newItem
                 } else {
@@ -492,7 +567,7 @@ fun InvoiceScreen(
                 }
 
                 if (saveToProductsCatalog) {
-                    viewModel.addProduct(newItem.name, newItem.price)
+                    viewModel.addProduct(newItem.name, newItem.price, category)
                 }
 
                 showItemDialog = false
@@ -524,6 +599,242 @@ fun InvoiceScreen(
             }
         )
     }
+}
+
+/**
+ * Autocomplete item dialog satisfying:
+ * "بمجرد كتابة أول حرف من اسم السلعة داخل الفاتورة، تظهر السلع المطابقة فوراً في قائمة منسدلة.
+ * عند الضغط على السلعة، يُعبّأ اسمها وسعرها تلقائياً مع نقل المؤشر للكمية دون الحاجة لإعادة كتابة البيانات."
+ */
+@Composable
+fun InvoiceItemAutocompleteDialogEnhanced(
+    initialItem: InvoiceItem?,
+    products: List<ProductItem>,
+    currencySymbol: String,
+    onDismiss: () -> Unit,
+    onSave: (item: InvoiceItem, saveToCatalog: Boolean, category: String) -> Unit
+) {
+    var name by remember { mutableStateOf(initialItem?.name ?: "") }
+    var qtyText by remember { mutableStateOf(initialItem?.let { if (it.qty % 1 == 0.0) it.qty.toInt().toString() else it.qty.toString() } ?: "1") }
+    var priceText by remember { mutableStateOf(initialItem?.let { if (it.price % 1 == 0.0) it.price.toInt().toString() else it.price.toString() } ?: "") }
+    var itemCategory by remember { mutableStateOf("عام") }
+    var saveToCatalog by remember { mutableStateOf(true) }
+
+    var nameError by remember { mutableStateOf<String?>(null) }
+    var qtyError by remember { mutableStateOf<String?>(null) }
+    var priceError by remember { mutableStateOf<String?>(null) }
+
+    var dropdownExpanded by remember { mutableStateOf(false) }
+    val qtyFocusRequester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+
+    // Matching products for autocomplete: triggers immediately from the first character!
+    val matchingProducts = remember(name, products) {
+        if (name.isBlank()) {
+            emptyList()
+        } else {
+            val q = name.trim()
+            val starts = products.filter { it.name.startsWith(q) || it.barcode.startsWith(q) }
+            val contains = products.filter {
+                (!it.name.startsWith(q) && !it.barcode.startsWith(q)) &&
+                        (it.name.contains(q, ignoreCase = true) || it.barcode.contains(q))
+            }
+            starts + contains
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = if (initialItem == null) "إضافة صنف للفاتورة" else "تعديل الصنف",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Name Input with Autocomplete Dropdown
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = {
+                            name = it
+                            nameError = null
+                            dropdownExpanded = it.isNotBlank() && matchingProducts.isNotEmpty()
+                        },
+                        label = { Text("اسم السلعة / الصنف أو الباركود") },
+                        placeholder = { Text("اكتب حرفاً للبحث التلقائي...") },
+                        isError = nameError != null,
+                        supportingText = { nameError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) } },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("item_name_input")
+                    )
+
+                    // Autocomplete Dropdown Menu
+                    DropdownMenu(
+                        expanded = dropdownExpanded && matchingProducts.isNotEmpty(),
+                        onDismissRequest = { dropdownExpanded = false },
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .heightIn(max = 250.dp)
+                    ) {
+                        matchingProducts.forEach { product ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = product.name,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                            if (product.category.isNotBlank() && product.category != "عام") {
+                                                Text(
+                                                    text = product.category,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = FormatUtils.formatCurrency(product.defaultPrice, currencySymbol),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    // 1. Auto-fill name and price
+                                    name = product.name
+                                    priceText = if (product.defaultPrice % 1 == 0.0) {
+                                        product.defaultPrice.toInt().toString()
+                                    } else {
+                                        product.defaultPrice.toString()
+                                    }
+                                    itemCategory = product.category
+                                    dropdownExpanded = false
+
+                                    // 2. Transfer focus to Quantity field smoothly!
+                                    scope.launch {
+                                        delay(100)
+                                        try {
+                                            qtyFocusRequester.requestFocus()
+                                        } catch (_: Exception) {}
+                                    }
+                                },
+                                modifier = Modifier.testTag("autocomplete_option_${product.id}")
+                            )
+                        }
+                    }
+                }
+
+                // Quantity Input
+                OutlinedTextField(
+                    value = qtyText,
+                    onValueChange = {
+                        qtyText = it
+                        qtyError = null
+                    },
+                    label = { Text("الكمية") },
+                    placeholder = { Text("1") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = qtyError != null,
+                    supportingText = { qtyError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) } },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(qtyFocusRequester)
+                        .testTag("item_qty_input")
+                )
+
+                // Price Input
+                OutlinedTextField(
+                    value = priceText,
+                    onValueChange = {
+                        priceText = it
+                        priceError = null
+                    },
+                    label = { Text("السعر الإفرادي ($currencySymbol)") },
+                    placeholder = { Text("0.00") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = priceError != null,
+                    supportingText = { priceError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) } },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("item_price_input")
+                )
+
+                // Save to catalog checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { saveToCatalog = !saveToCatalog },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = saveToCatalog,
+                        onCheckedChange = { saveToCatalog = it },
+                        modifier = Modifier.testTag("save_to_catalog_checkbox")
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "حفظ الاسم والسعر في الدليل للفواتير القادمة",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val trimmedName = name.trim()
+                    val parsedQty = qtyText.toDoubleOrNull()
+                    val parsedPrice = priceText.toDoubleOrNull()
+
+                    var valid = true
+                    if (trimmedName.isEmpty()) {
+                        nameError = "الرجاء إدخال اسم السلعة"
+                        valid = false
+                    }
+                    if (parsedQty == null || parsedQty <= 0) {
+                        qtyError = "كمية غير صحيحة"
+                        valid = false
+                    }
+                    if (parsedPrice == null || parsedPrice < 0) {
+                        priceError = "سعر غير صحيح"
+                        valid = false
+                    }
+
+                    if (valid && parsedQty != null && parsedPrice != null) {
+                        onSave(
+                            InvoiceItem(name = trimmedName, qty = parsedQty, price = parsedPrice),
+                            saveToCatalog,
+                            itemCategory
+                        )
+                    }
+                },
+                modifier = Modifier.testTag("save_item_dialog_button")
+            ) {
+                Text("حفظ", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
 }
 
 @Composable
@@ -595,232 +906,6 @@ fun InvoiceItemCard(
             }
         }
     }
-}
-
-/**
- * Autocomplete item dialog satisfying:
- * "بمجرد كتابة أول حرف من اسم السلعة داخل الفاتورة، تظهر السلع المطابقة فوراً في قائمة منسدلة.
- * عند الضغط على السلعة، يُعبّأ اسمها وسعرها تلقائياً مع نقل المؤشر للكمية دون الحاجة لإعادة كتابة البيانات."
- */
-@Composable
-fun InvoiceItemAutocompleteDialog(
-    initialItem: InvoiceItem?,
-    products: List<ProductItem>,
-    currencySymbol: String,
-    onDismiss: () -> Unit,
-    onSave: (item: InvoiceItem, saveToCatalog: Boolean) -> Unit
-) {
-    var name by remember { mutableStateOf(initialItem?.name ?: "") }
-    var qtyText by remember { mutableStateOf(initialItem?.let { if (it.qty % 1 == 0.0) it.qty.toInt().toString() else it.qty.toString() } ?: "1") }
-    var priceText by remember { mutableStateOf(initialItem?.let { if (it.price % 1 == 0.0) it.price.toInt().toString() else it.price.toString() } ?: "") }
-    var saveToCatalog by remember { mutableStateOf(true) }
-
-    var nameError by remember { mutableStateOf<String?>(null) }
-    var qtyError by remember { mutableStateOf<String?>(null) }
-    var priceError by remember { mutableStateOf<String?>(null) }
-
-    var dropdownExpanded by remember { mutableStateOf(false) }
-    val qtyFocusRequester = remember { FocusRequester() }
-    val scope = rememberCoroutineScope()
-
-    // Matching products for autocomplete: triggers immediately from the first character!
-    val matchingProducts = remember(name, products) {
-        if (name.isBlank()) {
-            emptyList()
-        } else {
-            val q = name.trim()
-            val starts = products.filter { it.name.startsWith(q) }
-            val contains = products.filter { !it.name.startsWith(q) && it.name.contains(q, ignoreCase = true) }
-            starts + contains
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = if (initialItem == null) "إضافة صنف للفاتورة" else "تعديل الصنف",
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Name Input with Autocomplete Dropdown
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = {
-                            name = it
-                            nameError = null
-                            dropdownExpanded = it.isNotBlank() && matchingProducts.isNotEmpty()
-                        },
-                        label = { Text("اسم السلعة / الصنف") },
-                        placeholder = { Text("اكتب أول حرف للبحث التلقائي...") },
-                        isError = nameError != null,
-                        supportingText = {
-                            nameError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
-                        },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("item_name_input")
-                    )
-
-                    // Autocomplete Dropdown Menu
-                    DropdownMenu(
-                        expanded = dropdownExpanded && matchingProducts.isNotEmpty(),
-                        onDismissRequest = { dropdownExpanded = false },
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .heightIn(max = 240.dp)
-                    ) {
-                        matchingProducts.forEach { product ->
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = product.name,
-                                            fontWeight = FontWeight.Bold,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            text = FormatUtils.formatCurrency(product.defaultPrice, currencySymbol),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                },
-                                onClick = {
-                                    // 1. Auto-fill name and price
-                                    name = product.name
-                                    priceText = if (product.defaultPrice % 1 == 0.0) {
-                                        product.defaultPrice.toInt().toString()
-                                    } else {
-                                        product.defaultPrice.toString()
-                                    }
-                                    dropdownExpanded = false
-
-                                    // 2. Transfer focus to Quantity field smoothly!
-                                    scope.launch {
-                                        delay(100)
-                                        try {
-                                            qtyFocusRequester.requestFocus()
-                                        } catch (_: Exception) {}
-                                    }
-                                },
-                                modifier = Modifier.testTag("autocomplete_option_${product.id}")
-                            )
-                        }
-                    }
-                }
-
-                // Quantity Input
-                OutlinedTextField(
-                    value = qtyText,
-                    onValueChange = {
-                        qtyText = it
-                        qtyError = null
-                    },
-                    label = { Text("الكمية") },
-                    placeholder = { Text("1") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = qtyError != null,
-                    supportingText = {
-                        qtyError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(qtyFocusRequester)
-                        .testTag("item_qty_input")
-                )
-
-                // Price Input
-                OutlinedTextField(
-                    value = priceText,
-                    onValueChange = {
-                        priceText = it
-                        priceError = null
-                    },
-                    label = { Text("السعر الإفرادي ($currencySymbol)") },
-                    placeholder = { Text("0.00") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    isError = priceError != null,
-                    supportingText = {
-                        priceError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
-                    },
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("item_price_input")
-                )
-
-                // Save to catalog checkbox
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { saveToCatalog = !saveToCatalog },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = saveToCatalog,
-                        onCheckedChange = { saveToCatalog = it },
-                        modifier = Modifier.testTag("save_to_catalog_checkbox")
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "حفظ الاسم والسعر في الدليل للفواتير القادمة",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val trimmedName = name.trim()
-                    val parsedQty = qtyText.toDoubleOrNull()
-                    val parsedPrice = priceText.toDoubleOrNull()
-
-                    var valid = true
-                    if (trimmedName.isEmpty()) {
-                        nameError = "الرجاء إدخال اسم السلعة"
-                        valid = false
-                    }
-                    if (parsedQty == null || parsedQty <= 0) {
-                        qtyError = "كمية غير صحيحة"
-                        valid = false
-                    }
-                    if (parsedPrice == null || parsedPrice < 0) {
-                        priceError = "سعر غير صحيح"
-                        valid = false
-                    }
-
-                    if (valid && parsedQty != null && parsedPrice != null) {
-                        onSave(
-                            InvoiceItem(name = trimmedName, qty = parsedQty, price = parsedPrice),
-                            saveToCatalog
-                        )
-                    }
-                },
-                modifier = Modifier.testTag("save_item_dialog_button")
-            ) {
-                Text("حفظ", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء")
-            }
-        }
-    )
 }
 
 @Composable

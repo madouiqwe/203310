@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -35,7 +33,6 @@ import androidx.compose.material.icons.filled.KeyboardHide
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -56,7 +53,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,7 +68,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -83,7 +78,6 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.InvoiceEntity
 import com.example.data.model.InvoiceItem
 import com.example.data.model.InvoiceJsonAdapter
-import com.example.data.model.ProductItem
 import com.example.ui.viewmodel.InvoiceViewModel
 import com.example.util.FormatUtils
 import kotlinx.coroutines.delay
@@ -106,6 +100,7 @@ fun QuickCalcScreen(
     var itemName by remember { mutableStateOf("") }
     var itemQty by remember { mutableStateOf("1") }
     var itemPrice by remember { mutableStateOf("") }
+    var cashTenderText by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var saveToSavedInvoices by remember { mutableStateOf(false) }
 
@@ -127,8 +122,11 @@ fun QuickCalcScreen(
             emptyList()
         } else {
             val q = itemName.trim()
-            val starts = products.filter { it.name.startsWith(q) }
-            val contains = products.filter { !it.name.startsWith(q) && it.name.contains(q, ignoreCase = true) }
+            val starts = products.filter { it.name.startsWith(q) || it.barcode.startsWith(q) }
+            val contains = products.filter {
+                (!it.name.startsWith(q) && !it.barcode.startsWith(q)) &&
+                        (it.name.contains(q, ignoreCase = true) || it.barcode.contains(q))
+            }
             starts + contains
         }
     }
@@ -137,6 +135,9 @@ fun QuickCalcScreen(
     val discountAmount = subtotal * (discountPercent / 100.0)
     val taxAmount = (subtotal - discountAmount) * (taxPercent / 100.0)
     val total = (subtotal - discountAmount + taxAmount).coerceAtLeast(0.0)
+
+    val cashTender = cashTenderText.toDoubleOrNull() ?: 0.0
+    val changeDue = (cashTender - total).coerceAtLeast(0.0)
 
     fun addItem() {
         val price = itemPrice.toDoubleOrNull()
@@ -208,6 +209,8 @@ fun QuickCalcScreen(
             discount = discountAmount,
             taxRate = taxPercent,
             status = "paid",
+            paymentMethod = "نقداً",
+            paidAmount = if (cashTender > 0) cashTender else total,
             notes = notes
         )
     }
@@ -248,6 +251,7 @@ fun QuickCalcScreen(
                             if (items.isNotEmpty()) {
                                 items.clear()
                                 notes = ""
+                                cashTenderText = ""
                                 discountPercent = 0.0
                                 taxPercent = 0.0
                             }
@@ -275,13 +279,39 @@ fun QuickCalcScreen(
                         .fillMaxWidth()
                         .padding(12.dp)
                 ) {
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text("ملاحظات الإيصال") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // Cash Received and Change due bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = cashTenderText,
+                            onValueChange = { cashTenderText = it },
+                            label = { Text("المبلغ المستلم") },
+                            placeholder = { Text("0.00") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        if (cashTender > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text("الباقي للعميل:", style = MaterialTheme.typography.labelSmall)
+                                    Text(
+                                        FormatUtils.formatCurrency(changeDue, settings.currencySymbol),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     Row(
                         modifier = Modifier
@@ -682,7 +712,6 @@ fun QuickCalculatorPad(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
     ) {
         Column(modifier = Modifier.padding(8.dp)) {
-            // Display box
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -716,7 +745,7 @@ fun QuickCalculatorPad(
                 ) {
                     row.forEachIndexed { colIdx, key ->
                         if (key == "=" && colIdx > 0 && row[colIdx - 1] == "=") {
-                            // skip duplicate placeholder
+                            // skip duplicate
                         } else {
                             val isAction = key in listOf("C", "←")
                             val isOp = key in listOf("+", "-", "×", "÷", "=", "→")
@@ -772,7 +801,6 @@ private fun evaluateMathExpression(expr: String): String {
 
     if (numbers.isEmpty()) return "0"
 
-    // High precedence * and /
     var i = 0
     while (i < ops.size) {
         if (ops[i] == '*') {

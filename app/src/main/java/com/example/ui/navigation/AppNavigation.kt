@@ -42,6 +42,7 @@ fun AppNavigation(viewModel: InvoiceViewModel) {
     ) {
         composable(AppRoutes.HOME) {
             HomeScreen(
+                viewModel = viewModel,
                 onNavigateToQuickCalc = { navController.navigate(AppRoutes.QUICK_CALC) },
                 onNavigateToInvoice = {
                     transferredItems = null

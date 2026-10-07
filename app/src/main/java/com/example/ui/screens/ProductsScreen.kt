@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,21 +14,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,44 +78,126 @@ fun ProductsScreen(
     onNavigateBack: () -> Unit
 ) {
     val products by viewModel.allProducts.collectAsState()
+    val categories by viewModel.allCategories.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("الكل") }
+    var sortOrder by remember { mutableStateOf("name_asc") } // "name_asc", "price_asc", "price_desc"
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showPresetsMenu by remember { mutableStateOf(false) }
+
     var showDialog by remember { mutableStateOf(false) }
     var editingProduct by remember { mutableStateOf<ProductItem?>(null) }
     var productToDelete by remember { mutableStateOf<ProductItem?>(null) }
 
-    val filteredProducts = remember(products, searchQuery) {
-        if (searchQuery.isBlank()) {
-            products
-        } else {
+    val filteredProducts = remember(products, searchQuery, selectedCategory, sortOrder) {
+        var list = products
+
+        // Category filter
+        if (selectedCategory != "الكل") {
+            list = list.filter { it.category == selectedCategory }
+        }
+
+        // Search query (name or barcode)
+        if (searchQuery.isNotBlank()) {
             val q = searchQuery.trim()
-            val startsWith = products.filter { it.name.startsWith(q) }
-            val contains = products.filter { !it.name.startsWith(q) && it.name.contains(q, ignoreCase = true) }
-            startsWith + contains
+            val startsWith = list.filter { it.name.startsWith(q) || it.barcode.startsWith(q) }
+            val contains = list.filter {
+                (!it.name.startsWith(q) && !it.barcode.startsWith(q)) &&
+                        (it.name.contains(q, ignoreCase = true) || it.barcode.contains(q))
+            }
+            list = startsWith + contains
+        }
+
+        // Sorting
+        when (sortOrder) {
+            "price_asc" -> list.sortedBy { it.defaultPrice }
+            "price_desc" -> list.sortedByDescending { it.defaultPrice }
+            else -> list.sortedBy { it.name }
         }
     }
+
+    val avgPrice = if (products.isNotEmpty()) products.map { it.defaultPrice }.average() else 0.0
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = "دليل السلع والمنتجات",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("دليل السلع والمنتجات", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier.testTag("back_button")
+                    IconButton(onClick = onNavigateBack, modifier = Modifier.testTag("back_button")) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+                actions = {
+                    // Presets quick-add pack
+                    IconButton(onClick = { showPresetsMenu = true }) {
+                        Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "قوالب سلع جاهزة")
+                    }
+                    DropdownMenu(
+                        expanded = showPresetsMenu,
+                        onDismissRequest = { showPresetsMenu = false }
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "رجوع"
+                        DropdownMenuItem(
+                            text = { Text("إضافة حزمة مشروبات ومقاهي") },
+                            onClick = {
+                                showPresetsMenu = false
+                                viewModel.addPresetsPack("drinks") {
+                                    scope.launch { snackbarHostState.showSnackbar("تمت إضافة حزمة المشروبات بنجاح") }
+                                }
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("إضافة حزمة حلويات وسكاكر") },
+                            onClick = {
+                                showPresetsMenu = false
+                                viewModel.addPresetsPack("sweets") {
+                                    scope.launch { snackbarHostState.showSnackbar("تمت إضافة حزمة الحلويات بنجاح") }
+                                }
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("إضافة حزمة مواد غذائية ومعلبات") },
+                            onClick = {
+                                showPresetsMenu = false
+                                viewModel.addPresetsPack("groceries") {
+                                    scope.launch { snackbarHostState.showSnackbar("تمت إضافة حزمة المواد الغذائية بنجاح") }
+                                }
+                            }
+                        )
+                    }
+
+                    // Sort menu
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(imageVector = Icons.Default.Sort, contentDescription = "ترتيب")
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("الاسم (أ - ي)") },
+                            onClick = {
+                                sortOrder = "name_asc"
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("السعر: من الأقل للأعلى") },
+                            onClick = {
+                                sortOrder = "price_asc"
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("السعر: من الأعلى للأقل") },
+                            onClick = {
+                                sortOrder = "price_desc"
+                                showSortMenu = false
+                            }
                         )
                     }
                 },
@@ -141,25 +233,46 @@ fun ProductsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Summary Banner
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "📦 الإجمالي: ${products.size} سلعة",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "متوسط الأسعار: ${FormatUtils.formatCurrency(avgPrice, settings.currencySymbol)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
                     .testTag("product_search_input"),
-                placeholder = { Text("بحث عن سلعة بالاسم...") },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "بحث"
-                    )
-                },
+                placeholder = { Text("بحث بالاسم أو الباركود...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(imageVector = Icons.Default.Clear, contentDescription = "مسح")
+                            Icon(Icons.Default.Clear, contentDescription = "مسح")
                         }
                     }
                 },
@@ -167,24 +280,24 @@ fun ProductsScreen(
                 singleLine = true
             )
 
-            // Results count banner
+            // Category Filter Chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = "عدد السلع: ${filteredProducts.size}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.outline
+                FilterChip(
+                    selected = selectedCategory == "الكل",
+                    onClick = { selectedCategory = "الكل" },
+                    label = { Text("الكل") }
                 )
-                if (searchQuery.isNotEmpty()) {
-                    Text(
-                        text = "نتائج البحث",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary
+                categories.forEach { cat ->
+                    FilterChip(
+                        selected = selectedCategory == cat,
+                        onClick = { selectedCategory = cat },
+                        label = { Text(cat) }
                     )
                 }
             }
@@ -219,11 +332,11 @@ fun ProductsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filteredProducts, key = { it.id }) { product ->
-                        ProductCardItem(
+                        ProductCardItemEnhanced(
                             product = product,
                             currencySymbol = settings.currencySymbol,
                             onEdit = {
@@ -245,20 +358,26 @@ fun ProductsScreen(
 
     // Add / Edit Product Dialog
     if (showDialog) {
-        ProductFormDialog(
+        ProductFormDialogEnhanced(
             initialProduct = editingProduct,
             existingProducts = products,
+            existingCategories = categories,
             onDismiss = {
                 showDialog = false
                 editingProduct = null
             },
-            onSave = { name, price ->
+            onSave = { name, price, category, barcode ->
                 if (editingProduct != null) {
-                    val updated = editingProduct!!.copy(name = name, defaultPrice = price)
+                    val updated = editingProduct!!.copy(
+                        name = name,
+                        defaultPrice = price,
+                        category = category,
+                        barcode = barcode
+                    )
                     viewModel.updateProduct(updated)
                     scope.launch { snackbarHostState.showSnackbar("تم تعديل السلعة بنجاح") }
                 } else {
-                    viewModel.addProduct(name, price)
+                    viewModel.addProduct(name, price, category, barcode)
                     scope.launch { snackbarHostState.showSnackbar("تمت إضافة السلعة بنجاح") }
                 }
                 showDialog = false
@@ -295,7 +414,7 @@ fun ProductsScreen(
 }
 
 @Composable
-fun ProductCardItem(
+fun ProductCardItemEnhanced(
     product: ProductItem,
     currencySymbol: String,
     onEdit: () -> Unit,
@@ -306,9 +425,7 @@ fun ProductCardItem(
             .fillMaxWidth()
             .testTag("product_item_${product.id}"),
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
@@ -318,7 +435,7 @@ fun ProductCardItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(44.dp),
+                modifier = Modifier.size(46.dp),
                 shape = CircleShape,
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
@@ -345,51 +462,68 @@ fun ProductCardItem(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = FormatUtils.formatCurrency(product.defaultPrice, currencySymbol),
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = FormatUtils.formatCurrency(product.defaultPrice, currencySymbol),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     )
-                )
+                    if (product.category.isNotBlank() && product.category != "عام") {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = product.category,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    if (product.barcode.isNotBlank()) {
+                        Text(
+                            text = "🏷️ ${product.barcode}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
             }
 
-            IconButton(
-                onClick = onEdit,
-                modifier = Modifier.testTag("edit_product_${product.id}")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "تعديل",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            IconButton(onClick = onEdit, modifier = Modifier.testTag("edit_product_${product.id}")) {
+                Icon(imageVector = Icons.Default.Edit, contentDescription = "تعديل", tint = MaterialTheme.colorScheme.primary)
             }
 
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.testTag("delete_product_${product.id}")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "حذف",
-                    tint = MaterialTheme.colorScheme.error
-                )
+            IconButton(onClick = onDelete, modifier = Modifier.testTag("delete_product_${product.id}")) {
+                Icon(imageVector = Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
             }
         }
     }
 }
 
 @Composable
-fun ProductFormDialog(
+fun ProductFormDialogEnhanced(
     initialProduct: ProductItem?,
     existingProducts: List<ProductItem>,
+    existingCategories: List<String>,
     onDismiss: () -> Unit,
-    onSave: (name: String, price: Double) -> Unit
+    onSave: (name: String, price: Double, category: String, barcode: String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialProduct?.name ?: "") }
     var priceText by remember { mutableStateOf(initialProduct?.defaultPrice?.let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } ?: "") }
+    var category by remember { mutableStateOf(initialProduct?.category ?: "عام") }
+    var barcode by remember { mutableStateOf(initialProduct?.barcode ?: "") }
+
     var nameError by remember { mutableStateOf<String?>(null) }
     var priceError by remember { mutableStateOf<String?>(null) }
+
+    val commonCategories = listOf("مواد غذائية", "مشروبات", "ألبان", "حلويات", "معلبات", "توابل", "منظفات", "عام")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -402,7 +536,7 @@ fun ProductFormDialog(
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = name,
@@ -413,13 +547,9 @@ fun ProductFormDialog(
                     label = { Text("اسم السلعة") },
                     placeholder = { Text("مثال: زيت زيتون 1 لتر") },
                     isError = nameError != null,
-                    supportingText = {
-                        nameError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
-                    },
+                    supportingText = { nameError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) } },
                     singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("product_name_input")
+                    modifier = Modifier.fillMaxWidth().testTag("product_name_input")
                 )
 
                 OutlinedTextField(
@@ -432,13 +562,43 @@ fun ProductFormDialog(
                     placeholder = { Text("0.00") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = priceError != null,
-                    supportingText = {
-                        priceError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
-                    },
+                    supportingText = { priceError?.let { Text(text = it, color = MaterialTheme.colorScheme.error) } },
                     singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("product_price_input")
+                )
+
+                OutlinedTextField(
+                    value = category,
+                    onValueChange = { category = it },
+                    label = { Text("التصنيف / الفئة") },
+                    placeholder = { Text("عام") },
+                    leadingIcon = { Icon(Icons.Default.Category, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Quick Category Selector Chips
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("product_price_input")
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    commonCategories.forEach { cat ->
+                        AssistChip(
+                            onClick = { category = cat },
+                            label = { Text(cat, fontSize = 11.sp) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = barcode,
+                    onValueChange = { barcode = it },
+                    label = { Text("الباركود / رمز الصنف (اختياري)") },
+                    leadingIcon = { Icon(Icons.Default.QrCode, contentDescription = null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
@@ -469,7 +629,7 @@ fun ProductFormDialog(
                     }
 
                     if (isValid && parsedPrice != null) {
-                        onSave(trimmedName, parsedPrice)
+                        onSave(trimmedName, parsedPrice, category.ifBlank { "عام" }, barcode.trim())
                     }
                 },
                 modifier = Modifier.testTag("save_product_dialog_button")

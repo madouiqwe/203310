@@ -77,10 +77,12 @@ fun SavedInvoicesScreen(
     val activeInvoices by viewModel.activeInvoices.collectAsState()
     val trashInvoices by viewModel.trashInvoices.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val stats by viewModel.salesStats.collectAsState()
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-    var statusFilter by remember { mutableStateOf("all") } // "all", "paid", "unpaid"
+    var statusFilter by remember { mutableStateOf("all") }
+    var paymentMethodFilter by remember { mutableStateOf("all") }
     var showFilterSheet by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
 
@@ -88,7 +90,7 @@ fun SavedInvoicesScreen(
     val scope = rememberCoroutineScope()
 
     val currentList = if (selectedTabIndex == 0) activeInvoices else trashInvoices
-    val filteredList = remember(currentList, searchQuery, statusFilter, selectedTabIndex) {
+    val filteredList = remember(currentList, searchQuery, statusFilter, paymentMethodFilter, selectedTabIndex) {
         currentList.filter { inv ->
             val matchesQuery = searchQuery.isBlank() ||
                     inv.customer.contains(searchQuery, ignoreCase = true) ||
@@ -102,7 +104,11 @@ fun SavedInvoicesScreen(
                 }
             }
 
-            matchesQuery && matchesStatus
+            val matchesMethod = if (selectedTabIndex == 1 || paymentMethodFilter == "all") true else {
+                inv.paymentMethod == paymentMethodFilter
+            }
+
+            matchesQuery && matchesStatus && matchesMethod
         }
     }
 
@@ -184,11 +190,53 @@ fun SavedInvoicesScreen(
                 )
             }
 
+            // Quick Analytics Banner (Active tab)
+            if (selectedTabIndex == 0 && activeInvoices.isNotEmpty()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text(
+                                text = "المحصل: ${FormatUtils.formatCurrency(stats.totalRevenue, settings.currencySymbol)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2E7D32)
+                            )
+                            Text(
+                                text = "مدفوعة: ${stats.paidCount} فاتورة",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "غير محصل: ${FormatUtils.formatCurrency(stats.totalUnpaidAmount, settings.currencySymbol)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
+                            )
+                            Text(
+                                text = "معلقة: ${stats.unpaidCount} فاتورة",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
+                }
+            }
+
             // Search Bar & Filter Button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -219,7 +267,7 @@ fun SavedInvoicesScreen(
                         Icon(
                             imageVector = Icons.Default.Tune,
                             contentDescription = "فلاتر",
-                            tint = if (statusFilter != "all") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            tint = if (statusFilter != "all" || paymentMethodFilter != "all") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -247,10 +295,18 @@ fun SavedInvoicesScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(filteredList, key = { it.id }) { invoice ->
-                        SavedInvoiceItemCard(
+                        SavedInvoiceItemCardEnhanced(
                             invoice = invoice,
                             currencySymbol = settings.currencySymbol,
-                            onClick = { onSelectInvoice(invoice) }
+                            onClick = { onSelectInvoice(invoice) },
+                            onToggleStatus = {
+                                viewModel.toggleInvoicePaidStatus(invoice)
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        if (!invoice.isPaid) "تم وضع علامة مدفوعة ✅" else "تم وضع علامة غير مدفوعة ⏳"
+                                    )
+                                }
+                            }
                         )
                     }
                     item {
@@ -274,13 +330,12 @@ fun SavedInvoicesScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
-                    text = "تصفية الفواتير",
+                    text = "تصفية متقدمة للفواتير",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(text = "حالة الدفع:", fontWeight = FontWeight.Bold)
-
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(
                         selected = statusFilter == "all",
@@ -299,6 +354,17 @@ fun SavedInvoicesScreen(
                     )
                 }
 
+                Text(text = "طريقة الدفع:", fontWeight = FontWeight.Bold)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("all" to "الكل", "نقداً" to "نقداً", "بطاقة" to "بطاقة", "آجل" to "آجل").forEach { (valKey, label) ->
+                        FilterChip(
+                            selected = paymentMethodFilter == valKey,
+                            onClick = { paymentMethodFilter = valKey },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -306,6 +372,7 @@ fun SavedInvoicesScreen(
                     TextButton(
                         onClick = {
                             statusFilter = "all"
+                            paymentMethodFilter = "all"
                             showFilterSheet = false
                         },
                         modifier = Modifier.weight(1f)
@@ -317,7 +384,7 @@ fun SavedInvoicesScreen(
                         onClick = { showFilterSheet = false },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("تم", fontWeight = FontWeight.Bold)
+                        Text("تطبيق", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -352,10 +419,11 @@ fun SavedInvoicesScreen(
 }
 
 @Composable
-fun SavedInvoiceItemCard(
+fun SavedInvoiceItemCardEnhanced(
     invoice: InvoiceEntity,
     currencySymbol: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onToggleStatus: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -373,14 +441,16 @@ fun SavedInvoiceItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(42.dp),
+                modifier = Modifier
+                    .size(44.dp)
+                    .clickable { onToggleStatus() },
                 shape = CircleShape,
                 color = if (invoice.isPaid) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = if (invoice.isPaid) Icons.Default.CheckCircle else Icons.Default.Schedule,
-                        contentDescription = null,
+                        contentDescription = "تبديل الحالة",
                         tint = if (invoice.isPaid) Color(0xFF2E7D32) else Color(0xFFE65100),
                         modifier = Modifier.size(24.dp)
                     )
@@ -397,19 +467,32 @@ fun SavedInvoiceItemCard(
                 Spacer(modifier = Modifier.height(2.dp))
                 val items = invoice.getItems()
                 Text(
-                    text = "رقم: ${invoice.invoiceNumber} • ${invoice.date}\n${items.size} صنف • ${if (invoice.isPaid) "مدفوعة" else "غير مدفوعة"}",
+                    text = "رقم: ${invoice.invoiceNumber} • ${invoice.date}\n${items.size} صنف • ${invoice.paymentMethod}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.outline
                 )
             }
 
-            Text(
-                text = FormatUtils.formatCurrency(invoice.total, currencySymbol),
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = FormatUtils.formatCurrency(invoice.total, currencySymbol),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 )
-            )
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = if (invoice.isPaid) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+                ) {
+                    Text(
+                        text = if (invoice.isPaid) "مدفوعة" else "غير مدفوعة",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (invoice.isPaid) Color(0xFF2E7D32) else Color(0xFFE65100)
+                    )
+                }
+            }
         }
     }
 }

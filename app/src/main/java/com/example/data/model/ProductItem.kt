@@ -9,5 +9,7 @@ data class ProductItem(
     val id: Long = 0,
     val name: String,
     val defaultPrice: Double,
+    val category: String = "عام",
+    val barcode: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
