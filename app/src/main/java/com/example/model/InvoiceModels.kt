@@ -19,12 +19,18 @@ enum class PaymentMethod(val labelAr: String, val labelEn: String) {
 data class InvoiceItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "",
-    val quantity: Double = 1.0,
+    val packageInfo: String = "",
+    val unitsPerPackage: Double = 1.0,  // كم في الحزمة (مثلاً 12)
+    val packagesCount: Double = 1.0,    // عدد الحزمات
+    val quantity: Double = unitsPerPackage * packagesCount, // إجمالي القطع
     val unitPrice: Double = 0.0,
     val description: String = ""
 ) {
     val total: Double
         get() = quantity * unitPrice
+
+    val packagePrice: Double
+        get() = unitsPerPackage * unitPrice
 }
 
 data class Invoice(

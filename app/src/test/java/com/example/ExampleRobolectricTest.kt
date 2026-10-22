@@ -64,4 +64,88 @@ class ExampleRobolectricTest {
     // Remaining balance updated automatically
     assertEquals(3910.0 - 3335.0, editedInvoice.remainingBalance, 0.01)
   }
+
+  @Test
+  fun `item packageInfo field and json converter persistence verification`() {
+    val converters = com.example.data.Converters()
+    val itemWithPackage = InvoiceItem(
+      name = "منتج تجاري",
+      packageInfo = "حزمة 12 حبة",
+      quantity = 3.0,
+      unitPrice = 45.0,
+      description = "كرتون معبأ"
+    )
+
+    val jsonString = converters.fromInvoiceItemsList(listOf(itemWithPackage))
+    assertTrue(jsonString.contains("حزمة 12 حبة"))
+
+    val restoredList = converters.toInvoiceItemsList(jsonString)
+    assertEquals(1, restoredList.size)
+    assertEquals("حزمة 12 حبة", restoredList[0].packageInfo)
+    assertEquals(135.0, restoredList[0].total, 0.01)
+  }
+
+  @Test
+  fun `automatic item total and invoice total calculation when quantity or unit price updates`() {
+    val initialItem = InvoiceItem(
+      id = "test-item-1",
+      name = "منتج عصير طبيعي",
+      quantity = 2.0,
+      unitPrice = 15.0
+    )
+    // Initially: 2 * 15 = 30.0
+    assertEquals(30.0, initialItem.total, 0.001)
+
+    // Update quantity from 2 to 5 -> total automatically becomes 75.0
+    val updatedQuantityItem = initialItem.copy(quantity = 5.0)
+    assertEquals(75.0, updatedQuantityItem.total, 0.001)
+
+    // Update unit price from 15 to 20 -> total automatically becomes 100.0
+    val updatedPriceItem = updatedQuantityItem.copy(unitPrice = 20.0)
+    assertEquals(100.0, updatedPriceItem.total, 0.001)
+
+    val invoice = Invoice(
+      invoiceNumber = "INV-AUTO-01",
+      customerName = "عميل التجربة",
+      items = listOf(updatedPriceItem),
+      discountAmount = 0.0,
+      taxPercentage = 15.0
+    )
+
+    // Subtotal: 100.0
+    assertEquals(100.0, invoice.subtotal, 0.001)
+    // Tax (15%): 15.0
+    assertEquals(15.0, invoice.calculatedTax, 0.001)
+    // Grand Total: 115.0
+    assertEquals(115.0, invoice.grandTotal, 0.001)
+  }
+
+  @Test
+  fun `package calculation with units per package times packages count times price`() {
+    // حزمة فيها 12 × 5 حزمات × 10 ر.س سعر القطعة = 600 ر.س
+    val packageItem = InvoiceItem(
+      id = "pkg-item-1",
+      name = "كرتون علب عصير",
+      unitsPerPackage = 12.0, // كم في الحزمة
+      packagesCount = 5.0,    // عدد الحزمات
+      quantity = 12.0 * 5.0,  // 60 قطعة
+      unitPrice = 10.0        // سعر القطعة
+    )
+
+    // Total = 12 * 5 * 10 = 600.0
+    assertEquals(60.0, packageItem.quantity, 0.001)
+    assertEquals(600.0, packageItem.total, 0.001)
+    // Package price = 12 * 10 = 120.0
+    assertEquals(120.0, packageItem.packagePrice, 0.001)
+
+    // Converters persistence check
+    val converters = com.example.data.Converters()
+    val json = converters.fromInvoiceItemsList(listOf(packageItem))
+    val parsed = converters.toInvoiceItemsList(json)
+    assertEquals(1, parsed.size)
+    assertEquals(12.0, parsed[0].unitsPerPackage, 0.001)
+    assertEquals(5.0, parsed[0].packagesCount, 0.001)
+    assertEquals(60.0, parsed[0].quantity, 0.001)
+    assertEquals(600.0, parsed[0].total, 0.001)
+  }
 }

@@ -136,6 +136,17 @@ fun HomeScreen(
                 modifier = Modifier.testTag("home_top_bar")
             )
         },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    viewModel.startNewInvoice()
+                    viewModel.draftInvoice.value?.let { onNavigateToEdit(it) }
+                },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("فاتورة جديدة", fontWeight = FontWeight.Bold) },
+                modifier = Modifier.testTag("create_invoice_fab")
+            )
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier
     ) { innerPadding ->

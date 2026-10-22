@@ -115,6 +115,7 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
                     name = "تصميم واجهة متجر إلكتروني",
+                    packageInfo = "حزمة برمجية متكاملة",
                     quantity = 1.0,
                     unitPrice = 3500.0,
                     description = "تصميم تجربة وواجهة المستخدم كاملة مع الهوية"
@@ -122,6 +123,7 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
                     name = "تطوير لوحة تحكم متقدمة",
+                    packageInfo = "حزمة القياس والتقارير",
                     quantity = 1.0,
                     unitPrice = 2800.0,
                     description = "ربط واجهات برمجة التطبيقات مع تقارير المبيعات"
@@ -129,6 +131,7 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
                     name = "دعم فني وصيانة شهرية",
+                    packageInfo = "حزمة الدعم الفني",
                     quantity = 2.0,
                     unitPrice = 600.0,
                     description = "دعم على مدار الساعة ومراقبة الأداء"

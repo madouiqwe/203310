@@ -258,20 +258,124 @@ class InvoiceViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    private fun updateDraftItems(newItems: List<InvoiceItem>) {
+        val current = _draftInvoice.value ?: return
+        val updatedInvoice = current.copy(
+            items = newItems,
+            updatedAt = System.currentTimeMillis()
+        )
+        // If the invoice was initially marked COMPLETED, automatically keep paidAmount equal to grandTotal
+        val finalInvoice = if (updatedInvoice.status == InvoiceStatus.COMPLETED && _initialCompletionState) {
+            updatedInvoice.copy(paidAmount = updatedInvoice.grandTotal)
+        } else {
+            updatedInvoice
+        }
+        _draftInvoice.value = finalInvoice
+    }
+
     fun addDraftItem(item: InvoiceItem) {
         val current = _draftInvoice.value ?: return
-        _draftInvoice.value = current.copy(items = current.items + item)
+        updateDraftItems(current.items + item)
     }
 
     fun updateDraftItem(item: InvoiceItem) {
         val current = _draftInvoice.value ?: return
         val updated = current.items.map { if (it.id == item.id) item else it }
-        _draftInvoice.value = current.copy(items = updated)
+        updateDraftItems(updated)
+    }
+
+    /**
+     * Updates an item's quantity and automatically recalculates the item total
+     * and invoice financial totals (Subtotal, Tax, Grand Total).
+     */
+    fun updateDraftItemQuantity(itemId: String, quantity: Double) {
+        val current = _draftInvoice.value ?: return
+        val validQty = quantity.coerceAtLeast(0.0)
+        val updated = current.items.map {
+            if (it.id == itemId) it.copy(quantity = validQty) else it
+        }
+        updateDraftItems(updated)
+    }
+
+    /**
+     * Updates an item's unit price and automatically recalculates the item total
+     * and invoice financial totals (Subtotal, Tax, Grand Total).
+     */
+    fun updateDraftItemUnitPrice(itemId: String, unitPrice: Double) {
+        val current = _draftInvoice.value ?: return
+        val validPrice = unitPrice.coerceAtLeast(0.0)
+        val updated = current.items.map {
+            if (it.id == itemId) it.copy(unitPrice = validPrice) else it
+        }
+        updateDraftItems(updated)
+    }
+
+    fun incrementDraftItemQuantity(itemId: String, step: Double = 1.0) {
+        val current = _draftInvoice.value ?: return
+        val target = current.items.find { it.id == itemId } ?: return
+        if (target.unitsPerPackage > 1.0) {
+            incrementDraftItemPackagesCount(itemId, step)
+        } else {
+            updateDraftItemQuantity(itemId, target.quantity + step)
+        }
+    }
+
+    fun decrementDraftItemQuantity(itemId: String, step: Double = 1.0) {
+        val current = _draftInvoice.value ?: return
+        val target = current.items.find { it.id == itemId } ?: return
+        if (target.unitsPerPackage > 1.0) {
+            decrementDraftItemPackagesCount(itemId, step)
+        } else {
+            val newQty = (target.quantity - step).coerceAtLeast(1.0)
+            updateDraftItemQuantity(itemId, newQty)
+        }
+    }
+
+    /**
+     * Updates package capacity (units per package) and number of packages,
+     * automatically calculating: Total Quantity = (unitsPerPackage * packagesCount)
+     * and Total Price = (unitsPerPackage * packagesCount * unitPrice)
+     */
+    fun updateDraftItemPackageCalculation(
+        itemId: String,
+        unitsPerPackage: Double,
+        packagesCount: Double,
+        unitPrice: Double? = null
+    ) {
+        val current = _draftInvoice.value ?: return
+        val validUnits = unitsPerPackage.coerceAtLeast(1.0)
+        val validPackages = packagesCount.coerceAtLeast(0.0)
+        val totalQuantity = validUnits * validPackages
+        val updated = current.items.map { item ->
+            if (item.id == itemId) {
+                item.copy(
+                    unitsPerPackage = validUnits,
+                    packagesCount = validPackages,
+                    quantity = totalQuantity,
+                    unitPrice = unitPrice ?: item.unitPrice
+                )
+            } else item
+        }
+        updateDraftItems(updated)
+    }
+
+    fun incrementDraftItemPackagesCount(itemId: String, step: Double = 1.0) {
+        val current = _draftInvoice.value ?: return
+        val target = current.items.find { it.id == itemId } ?: return
+        val newCount = target.packagesCount + step
+        updateDraftItemPackageCalculation(itemId, target.unitsPerPackage, newCount)
+    }
+
+    fun decrementDraftItemPackagesCount(itemId: String, step: Double = 1.0) {
+        val current = _draftInvoice.value ?: return
+        val target = current.items.find { it.id == itemId } ?: return
+        val newCount = (target.packagesCount - step).coerceAtLeast(1.0)
+        updateDraftItemPackageCalculation(itemId, target.unitsPerPackage, newCount)
     }
 
     fun removeDraftItem(itemId: String) {
         val current = _draftInvoice.value ?: return
-        _draftInvoice.value = current.copy(items = current.items.filterNot { it.id == itemId })
+        updateDraftItems(current.items.filterNot { it.id == itemId })
     }
 
     fun saveDraft(onSaved: (Long) -> Unit) {

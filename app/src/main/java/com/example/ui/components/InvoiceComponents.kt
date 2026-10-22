@@ -17,11 +17,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Phone
@@ -472,25 +474,75 @@ fun InvoiceCard(
 }
 
 @Composable
+fun PackageBadge(
+    packageText: String,
+    modifier: Modifier = Modifier
+) {
+    if (packageText.isBlank()) return
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(6.dp),
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Inventory2,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(12.dp)
+            )
+            Text(
+                text = "حزمة: $packageText",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+        }
+    }
+}
+
+@Composable
 fun EditItemDialog(
     initialItem: InvoiceItem?,
     onDismiss: () -> Unit,
     onConfirm: (InvoiceItem) -> Unit
 ) {
     var name by remember { mutableStateOf(initialItem?.name ?: "") }
-    var quantityText by remember { mutableStateOf(initialItem?.quantity?.toString() ?: "1") }
-    var priceText by remember { mutableStateOf(initialItem?.unitPrice?.toString() ?: "") }
+    var unitsPerPackageText by remember {
+        mutableStateOf(
+            initialItem?.unitsPerPackage?.let {
+                if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString()
+            } ?: "12"
+        )
+    }
+    var packagesCountText by remember {
+        mutableStateOf(
+            initialItem?.packagesCount?.let {
+                if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString()
+            } ?: "1"
+        )
+    }
+    var packageInfo by remember { mutableStateOf(initialItem?.packageInfo ?: "") }
+    var priceText by remember { mutableStateOf(initialItem?.unitPrice?.let { if (it > 0) it.toString() else "" } ?: "") }
     var description by remember { mutableStateOf(initialItem?.description ?: "") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    val qty = quantityText.toDoubleOrNull() ?: 1.0
+    val units = unitsPerPackageText.toDoubleOrNull() ?: 1.0
+    val packages = packagesCountText.toDoubleOrNull() ?: 0.0
+    val totalQty = (units * packages).coerceAtLeast(0.0)
     val price = priceText.toDoubleOrNull() ?: 0.0
-    val total = qty * price
+    // Total = كم في الحزمة × عدد الحزمات × السعر
+    val total = (units * packages * price).coerceAtLeast(0.0)
+    val singlePackagePrice = (units * price).coerceAtLeast(0.0)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = if (initialItem == null) "إضافة بند جديد" else "تعديل البند")
+            Text(text = if (initialItem == null) "إضافة سلعة جديدة" else "تعديل السلعة")
         },
         text = {
             Column(
@@ -500,32 +552,118 @@ fun EditItemDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("اسم البند / الخدمة *") },
+                    label = { Text("اسم السلعة *") },
+                    placeholder = { Text("أدخل اسم السلعة أو المنتج") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("item_name_input")
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // Package Details Card: سعر سلعة × (عدد حبات حزمة) حزمة
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    OutlinedTextField(
-                        value = quantityText,
-                        onValueChange = { quantityText = it },
-                        label = { Text("الكمية") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1f).testTag("item_quantity_input")
-                    )
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Inventory2,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "حساب الحزمة: سعر سلعة × (عدد حبات حزمة) × حزمة",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
 
-                    OutlinedTextField(
-                        value = priceText,
-                        onValueChange = { priceText = it },
-                        label = { Text("سعر الوحدة (ر.س) *") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.weight(1.5f).testTag("item_price_input")
-                    )
+                        // First row: سعر السلعة + عدد حبات الحزمة
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = priceText,
+                                onValueChange = { priceText = it },
+                                label = { Text("سعر السلعة (ر.س) *") },
+                                placeholder = { Text("مثلاً: 10") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("item_price_input")
+                            )
+
+                            OutlinedTextField(
+                                value = unitsPerPackageText,
+                                onValueChange = { unitsPerPackageText = it },
+                                label = { Text("عدد حبات الحزمة") },
+                                placeholder = { Text("مثلاً: 12") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("item_units_per_package_input")
+                            )
+                        }
+
+                        // Second row: عدد الحزم + اسم/نوع الحزمة
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = packagesCountText,
+                                onValueChange = { packagesCountText = it },
+                                label = { Text("الحزم (عدد الحزم)") },
+                                placeholder = { Text("مثلاً: 1") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("item_packages_count_input")
+                            )
+
+                            OutlinedTextField(
+                                value = packageInfo,
+                                onValueChange = { packageInfo = it },
+                                label = { Text("نوع الحزمة (اختياري)") },
+                                placeholder = { Text("مثال: كرتون، باقة") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).testTag("item_package_input")
+                            )
+                        }
+
+                        // Calculation sub-summary: سعر الحزمة = سعر السلعة × عدد حبات الحزمة
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "سعر الحزمة الواحدة:",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${formatCurrency(price)} × ${if (units == units.toLong().toDouble()) units.toLong().toString() else units.toString()} حبة = ${formatCurrency(singlePackagePrice)}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
 
                 OutlinedTextField(
@@ -536,26 +674,58 @@ fun EditItemDialog(
                     modifier = Modifier.fillMaxWidth().testTag("item_description_input")
                 )
 
+                // Live Calculation Box: سعر سلعة × (عدد حبات حزمة) × حزمة = الإجمالي
                 Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().testTag("live_item_calculation_box")
                 ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Calculate,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "الإجمالي التلقائي:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            Text(
+                                text = formatCurrency(total),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // Formula: سعر السلعة × (عدد حبات الحزمة) × الحزم
                         Text(
-                            text = "إجمالي البند:",
-                            fontSize = 13.sp,
+                            text = "${formatCurrency(price)} (سعر السلعة) × (${if (units == units.toLong().toDouble()) units.toLong().toString() else units.toString()} حبة بالحزمة) × ${if (packages == packages.toLong().toDouble()) packages.toLong().toString() else packages.toString()} حزمة = ${formatCurrency(total)}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
+
                         Text(
-                            text = formatCurrency(total),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            text = "إجمالي الحبات: ${if (totalQty == totalQty.toLong().toDouble()) totalQty.toLong().toString() else totalQty.toString()} حبة",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
                         )
                     }
                 }
@@ -573,20 +743,30 @@ fun EditItemDialog(
             Button(
                 onClick = {
                     if (name.isBlank()) {
-                        errorMessage = "يرجى كتابة اسم البند"
+                        errorMessage = "يرجى كتابة اسم السلعة"
                         return@Button
                     }
-                    val validQty = quantityText.toDoubleOrNull() ?: 1.0
+                    val validUnits = unitsPerPackageText.toDoubleOrNull() ?: 1.0
+                    val validPackages = packagesCountText.toDoubleOrNull() ?: 1.0
                     val validPrice = priceText.toDoubleOrNull()
                     if (validPrice == null || validPrice < 0) {
                         errorMessage = "يرجى إدخال سعر صحيح"
                         return@Button
                     }
 
+                    val autoPackageTag = if (packageInfo.isNotBlank()) {
+                        packageInfo.trim()
+                    } else if (validUnits > 1.0) {
+                        "حزمة (${if (validUnits == validUnits.toLong().toDouble()) validUnits.toLong().toString() else validUnits.toString()} قطعة)"
+                    } else ""
+
                     val result = InvoiceItem(
                         id = initialItem?.id ?: UUID.randomUUID().toString(),
                         name = name.trim(),
-                        quantity = validQty,
+                        packageInfo = autoPackageTag,
+                        unitsPerPackage = validUnits,
+                        packagesCount = validPackages,
+                        quantity = validUnits * validPackages,
                         unitPrice = validPrice,
                         description = description.trim()
                     )

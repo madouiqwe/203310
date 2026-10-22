@@ -68,13 +68,20 @@ import com.example.model.Invoice
 import com.example.model.InvoiceStatus
 import com.example.ui.InvoiceViewModel
 import com.example.ui.components.InvoiceStatusChip
+import com.example.ui.components.PackageBadge
 import com.example.ui.components.PostCompletionBanner
 import com.example.ui.components.formatCurrency
 import com.example.ui.components.formatDate
 
 fun shareInvoiceDetails(context: Context, invoice: Invoice) {
     val itemsSummary = invoice.items.joinToString("\n") {
-        "• ${it.name} (${it.quantity} × ${formatCurrency(it.unitPrice)}) = ${formatCurrency(it.total)}"
+        val packText = if (it.packageInfo.isNotBlank()) " [${it.packageInfo}]" else ""
+        val calcDetails = if (it.unitsPerPackage > 1.0) {
+            " (${formatCurrency(it.unitPrice)} سعر السلعة × ${if (it.unitsPerPackage == it.unitsPerPackage.toLong().toDouble()) it.unitsPerPackage.toLong().toString() else it.unitsPerPackage.toString()} حبة بالحزمة × ${if (it.packagesCount == it.packagesCount.toLong().toDouble()) it.packagesCount.toLong().toString() else it.packagesCount.toString()} حزمة)"
+        } else {
+            " (${it.quantity} × ${formatCurrency(it.unitPrice)})"
+        }
+        "• ${it.name}$packText$calcDetails = ${formatCurrency(it.total)}"
     }
 
     val text = """
@@ -446,16 +453,38 @@ fun InvoiceDetailScreen(
                             verticalAlignment = Alignment.Top
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.name,
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "${item.quantity} × ${formatCurrency(item.unitPrice)}",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = item.name,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp
+                                    )
+                                    if (item.packageInfo.isNotBlank()) {
+                                        PackageBadge(packageText = item.packageInfo)
+                                    }
+                                }
+                                if (item.unitsPerPackage > 1.0) {
+                                    Text(
+                                        text = "${formatCurrency(item.unitPrice)} (سعر السلعة) × (${if (item.unitsPerPackage == item.unitsPerPackage.toLong().toDouble()) item.unitsPerPackage.toLong().toString() else item.unitsPerPackage.toString()} حبة بالحزمة) × ${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزمة",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "سعر الحزمة الواحدة: ${formatCurrency(item.packagePrice)}",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${item.quantity} × ${formatCurrency(item.unitPrice)}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 if (item.description.isNotBlank()) {
                                     Text(
                                         text = item.description,

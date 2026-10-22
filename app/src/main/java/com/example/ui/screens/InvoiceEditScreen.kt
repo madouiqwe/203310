@@ -1,12 +1,14 @@
 package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.Payment
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -71,6 +74,7 @@ import com.example.model.InvoiceStatus
 import com.example.model.PaymentMethod
 import com.example.ui.InvoiceViewModel
 import com.example.ui.components.EditItemDialog
+import com.example.ui.components.PackageBadge
 import com.example.ui.components.formatCurrency
 import java.util.UUID
 
@@ -91,6 +95,7 @@ fun InvoiceEditScreen(
     }
 
     var editingItem by remember { mutableStateOf<InvoiceItem?>(null) }
+    var isAddingItem by remember { mutableStateOf(false) }
 
     BackHandler {
         viewModel.cancelDraft()
@@ -384,16 +389,28 @@ fun InvoiceEditScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "بنود الفاتورة (${draft.items.size})",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                        Text(
-                            text = "اضغط على أيقونة القلم لتعديل أي بند",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column {
+                            Text(
+                                text = "سلع وبنود الفاتورة (${draft.items.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "اضغط على القلم للتعديل أو أضف سلعة جديدة",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Button(
+                            onClick = { isAddingItem = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.testTag("add_item_button")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("إضافة سلعة", fontSize = 13.sp)
+                        }
                     }
 
                     if (draft.items.isEmpty()) {
@@ -403,14 +420,23 @@ fun InvoiceEditScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                modifier = Modifier.padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Text(
-                                    text = "لا توجد بنود مسجلة في هذه الفاتورة.",
+                                    text = "لا توجد سلع مسجلة في هذه الفاتورة.",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                OutlinedButton(
+                                    onClick = { isAddingItem = true },
+                                    modifier = Modifier.testTag("empty_add_item_button")
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("إضافة أول سلعة الآن")
+                                }
                             }
                         }
                     } else {
@@ -427,20 +453,26 @@ fun InvoiceEditScreen(
                                         .fillMaxWidth()
                                         .padding(12.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = item.name,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                        Text(
-                                            text = "${item.quantity} × ${formatCurrency(item.unitPrice)} = ${formatCurrency(item.total)}",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = item.name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp
+                                            )
+                                            if (item.packageInfo.isNotBlank()) {
+                                                PackageBadge(packageText = item.packageInfo)
+                                            }
+                                        }
+
                                         if (item.description.isNotBlank()) {
                                             Text(
                                                 text = item.description,
@@ -448,9 +480,101 @@ fun InvoiceEditScreen(
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
+
+                                        // Automatic calculation row with package stepper & total price
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                // Package / Quantity Stepper
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.surface,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = { viewModel.decrementDraftItemQuantity(item.id) },
+                                                            enabled = if (item.unitsPerPackage > 1.0) item.packagesCount > 1.0 else item.quantity > 1.0,
+                                                            modifier = Modifier.size(28.dp).testTag("decrease_qty_${index}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Remove,
+                                                                contentDescription = "إنقاص",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = if (item.unitsPerPackage > 1.0) {
+                                                                "${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزم"
+                                                            } else {
+                                                                if (item.quantity == item.quantity.toLong().toDouble()) item.quantity.toLong().toString() else item.quantity.toString()
+                                                            },
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 12.sp,
+                                                            modifier = Modifier.padding(horizontal = 4.dp).testTag("item_qty_label_${index}")
+                                                        )
+                                                        IconButton(
+                                                            onClick = { viewModel.incrementDraftItemQuantity(item.id) },
+                                                            modifier = Modifier.size(28.dp).testTag("increase_qty_${index}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Add,
+                                                                contentDescription = "زيادة",
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Text(
+                                                    text = "× ${formatCurrency(item.unitPrice)}",
+                                                    fontSize = 12.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+
+                                                Spacer(modifier = Modifier.weight(1f))
+
+                                                // Real-time calculated total
+                                                Surface(
+                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "= ${formatCurrency(item.total)}",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 12.sp,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp).testTag("item_total_badge_${index}")
+                                                    )
+                                                }
+                                            }
+
+                                            if (item.unitsPerPackage > 1.0) {
+                                                Text(
+                                                    text = "${formatCurrency(item.unitPrice)} (سعر السلعة) × (${if (item.unitsPerPackage == item.unitsPerPackage.toLong().toDouble()) item.unitsPerPackage.toLong().toString() else item.unitsPerPackage.toString()} حبة) × ${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزمة = ${formatCurrency(item.total)}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = "سعر الحزمة الواحدة: ${formatCurrency(item.packagePrice)}",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
                                     }
 
-                                    Row {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         IconButton(
                                             onClick = { editingItem = item },
                                             modifier = Modifier.size(32.dp).testTag("edit_item_button_${index}")
@@ -690,6 +814,18 @@ fun InvoiceEditScreen(
             onConfirm = { updatedItem ->
                 viewModel.updateDraftItem(updatedItem)
                 editingItem = null
+            }
+        )
+    }
+
+    // Dialog for adding a new item
+    if (isAddingItem) {
+        EditItemDialog(
+            initialItem = null,
+            onDismiss = { isAddingItem = false },
+            onConfirm = { newItem ->
+                viewModel.addDraftItem(newItem)
+                isAddingItem = false
             }
         )
     }
