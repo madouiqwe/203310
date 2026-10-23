@@ -2,6 +2,7 @@ package com.example.data
 
 import androidx.room.TypeConverter
 import com.example.model.InvoiceItem
+import com.example.model.SaleUnit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -11,13 +12,14 @@ class Converters {
         if (items.isNullOrEmpty()) return "[]"
         val array = JSONArray()
         for (item in items) {
-            val effectivePackages = if (item.unitsPerPackage > 1.0) item.packagesCount else item.quantity
             val obj = JSONObject().apply {
                 put("id", item.id)
                 put("name", item.name)
                 put("packageInfo", item.packageInfo)
                 put("unitsPerPackage", item.unitsPerPackage)
-                put("packagesCount", effectivePackages)
+                put("packagesCount", item.packagesCount)
+                put("singlePiecesCount", item.singlePiecesCount)
+                put("saleUnit", item.saleUnit.name)
                 put("quantity", item.quantity)
                 put("unitPrice", item.unitPrice)
                 put("description", item.description)
@@ -36,17 +38,36 @@ class Converters {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val rawQty = obj.optDouble("quantity", 1.0)
-                val units = obj.optDouble("unitsPerPackage", 1.0)
-                val packs = obj.optDouble("packagesCount", if (units > 1.0) (rawQty / units) else rawQty)
-                val finalQty = if (units > 1.0) (units * packs) else rawQty
-                val finalPacks = if (units > 1.0) packs else rawQty
+                val units = obj.optDouble("unitsPerPackage", 12.0)
+                val packs = obj.optDouble("packagesCount", if (units > 1.0) (rawQty / units) else 1.0)
+                val singlePieces = obj.optDouble("singlePiecesCount", rawQty)
+
+                val saleUnitStr = obj.optString("saleUnit", "")
+                val saleUnit = try {
+                    if (saleUnitStr.isNotBlank()) {
+                        SaleUnit.valueOf(saleUnitStr)
+                    } else {
+                        // Fallback inference for old data
+                        if (units > 1.0 && packs > 0) SaleUnit.PACKAGE else SaleUnit.PIECE
+                    }
+                } catch (_: Exception) {
+                    SaleUnit.PACKAGE
+                }
+
+                val finalQty = if (saleUnit == SaleUnit.PACKAGE) {
+                    (units * packs).coerceAtLeast(0.0)
+                } else {
+                    singlePieces.coerceAtLeast(0.0)
+                }
 
                 val item = InvoiceItem(
                     id = obj.optString("id", java.util.UUID.randomUUID().toString()),
                     name = obj.optString("name", ""),
                     packageInfo = obj.optString("packageInfo", ""),
                     unitsPerPackage = units,
-                    packagesCount = finalPacks,
+                    packagesCount = packs,
+                    singlePiecesCount = singlePieces,
+                    saleUnit = saleUnit,
                     quantity = finalQty,
                     unitPrice = obj.optDouble("unitPrice", 0.0),
                     description = obj.optString("description", "")

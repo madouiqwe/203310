@@ -2,6 +2,8 @@ package com.example.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,12 +31,15 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Sell
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +69,8 @@ import androidx.compose.ui.unit.sp
 import com.example.model.Invoice
 import com.example.model.InvoiceItem
 import com.example.model.InvoiceStatus
+import com.example.model.Product
+import com.example.model.SaleUnit
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -73,6 +81,10 @@ val CurrencyFormatter = DecimalFormat("#,##0.00")
 
 fun formatCurrency(amount: Double): String {
     return "${CurrencyFormatter.format(amount)} ر.س"
+}
+
+fun formatQuantity(qty: Double): String {
+    return if (qty == qty.toLong().toDouble()) qty.toLong().toString() else qty.toString()
 }
 
 fun formatDate(millis: Long): String {
@@ -496,7 +508,7 @@ fun PackageBadge(
                 modifier = Modifier.size(12.dp)
             )
             Text(
-                text = "حزمة: $packageText",
+                text = packageText,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
@@ -508,158 +520,117 @@ fun PackageBadge(
 @Composable
 fun EditItemDialog(
     initialItem: InvoiceItem?,
+    availableProducts: List<Product> = emptyList(),
     onDismiss: () -> Unit,
     onConfirm: (InvoiceItem) -> Unit
 ) {
     var name by remember { mutableStateOf(initialItem?.name ?: "") }
+    var selectedUnit by remember { mutableStateOf(initialItem?.saleUnit ?: SaleUnit.PACKAGE) }
+
+    // سعة الحزمة لهذا المنتج بالتحديد (افتراضياً 12 أو من الصنف)
     var unitsPerPackageText by remember {
         mutableStateOf(
-            initialItem?.unitsPerPackage?.let {
-                if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString()
-            } ?: "12"
+            initialItem?.unitsPerPackage?.let { formatQuantity(it) } ?: "24"
         )
     }
+
+    // عدد الحزم إذا كان البيع بالحزمة
     var packagesCountText by remember {
         mutableStateOf(
-            initialItem?.packagesCount?.let {
-                if (it == it.toLong().toDouble()) it.toLong().toString() else it.toString()
-            } ?: "1"
+            initialItem?.packagesCount?.let { formatQuantity(it) } ?: "1"
         )
     }
-    var packageInfo by remember { mutableStateOf(initialItem?.packageInfo ?: "") }
-    var priceText by remember { mutableStateOf(initialItem?.unitPrice?.let { if (it > 0) it.toString() else "" } ?: "") }
+
+    // عدد الحبات المفردة إذا كان البيع بالحبة
+    var singlePiecesCountText by remember {
+        mutableStateOf(
+            if (initialItem != null && initialItem.saleUnit == SaleUnit.PIECE) {
+                formatQuantity(initialItem.quantity)
+            } else "1"
+        )
+    }
+
+    var packageTypeName by remember {
+        mutableStateOf(
+            initialItem?.packageInfo?.ifBlank { "كرتونة" } ?: "كرتونة"
+        )
+    }
+
+    var priceText by remember {
+        mutableStateOf(initialItem?.unitPrice?.let { if (it > 0) it.toString() else "" } ?: "")
+    }
+
     var description by remember { mutableStateOf(initialItem?.description ?: "") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val units = unitsPerPackageText.toDoubleOrNull() ?: 1.0
     val packages = packagesCountText.toDoubleOrNull() ?: 0.0
-    val totalQty = (units * packages).coerceAtLeast(0.0)
+    val pieces = singlePiecesCountText.toDoubleOrNull() ?: 0.0
     val price = priceText.toDoubleOrNull() ?: 0.0
-    // Total = كم في الحزمة × عدد الحزمات × السعر
-    val total = (units * packages * price).coerceAtLeast(0.0)
+
+    // حساب عدد القطع الإجمالي والإجمالي المالي
+    val totalQty = if (selectedUnit == SaleUnit.PACKAGE) {
+        (units * packages).coerceAtLeast(0.0)
+    } else {
+        pieces.coerceAtLeast(0.0)
+    }
+
+    val totalAmount = if (selectedUnit == SaleUnit.PACKAGE) {
+        (units * packages * price).coerceAtLeast(0.0)
+    } else {
+        (pieces * price).coerceAtLeast(0.0)
+    }
+
     val singlePackagePrice = (units * price).coerceAtLeast(0.0)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = if (initialItem == null) "إضافة سلعة جديدة" else "تعديل السلعة")
+            Text(
+                text = if (initialItem == null) "إضافة صنف للفاتورة" else "تعديل الصنف",
+                fontWeight = FontWeight.Bold
+            )
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("اسم السلعة *") },
-                    placeholder = { Text("أدخل اسم السلعة أو المنتج") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("item_name_input")
-                )
-
-                // Package Details Card: سعر سلعة × (عدد حبات حزمة) حزمة
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                // Quick Catalog Selection Chips (إذا توفرت منتجات في الدليل)
+                if (availableProducts.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "اختر من دليل المنتجات (تعبئة تلقائية لسعة الحزمة والسعر):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Inventory2,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "حساب الحزمة: سعر سلعة × (عدد حبات حزمة) × حزمة",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        // First row: سعر السلعة + عدد حبات الحزمة
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = priceText,
-                                onValueChange = { priceText = it },
-                                label = { Text("سعر السلعة (ر.س) *") },
-                                placeholder = { Text("مثلاً: 10") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f).testTag("item_price_input")
-                            )
-
-                            OutlinedTextField(
-                                value = unitsPerPackageText,
-                                onValueChange = { unitsPerPackageText = it },
-                                label = { Text("عدد حبات الحزمة") },
-                                placeholder = { Text("مثلاً: 12") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f).testTag("item_units_per_package_input")
-                            )
-                        }
-
-                        // Second row: عدد الحزم + اسم/نوع الحزمة
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = packagesCountText,
-                                onValueChange = { packagesCountText = it },
-                                label = { Text("الحزم (عدد الحزم)") },
-                                placeholder = { Text("مثلاً: 1") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f).testTag("item_packages_count_input")
-                            )
-
-                            OutlinedTextField(
-                                value = packageInfo,
-                                onValueChange = { packageInfo = it },
-                                label = { Text("نوع الحزمة (اختياري)") },
-                                placeholder = { Text("مثال: كرتون، باقة") },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f).testTag("item_package_input")
-                            )
-                        }
-
-                        // Calculation sub-summary: سعر الحزمة = سعر السلعة × عدد حبات الحزمة
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "سعر الحزمة الواحدة:",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "${formatCurrency(price)} × ${if (units == units.toLong().toDouble()) units.toLong().toString() else units.toString()} حبة = ${formatCurrency(singlePackagePrice)}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                            availableProducts.take(6).forEach { product ->
+                                FilterChip(
+                                    selected = (name == product.name),
+                                    onClick = {
+                                        name = product.name
+                                        unitsPerPackageText = formatQuantity(product.unitsPerPackage)
+                                        priceText = if (product.defaultUnitPrice > 0) product.defaultUnitPrice.toString() else priceText
+                                        packageTypeName = product.packageTypeName
+                                    },
+                                    label = {
+                                        Text(
+                                            text = "${product.name} (${formatQuantity(product.unitsPerPackage)} حبة)",
+                                            fontSize = 11.sp
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer
+                                    )
                                 )
                             }
                         }
@@ -667,14 +638,166 @@ fun EditItemDialog(
                 }
 
                 OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("اسم الصنف / المنتج *") },
+                    placeholder = { Text("مثال: عصير برتقال 250 مل") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("item_name_input")
+                )
+
+                // Package Capacity & Price Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = priceText,
+                        onValueChange = { priceText = it },
+                        label = { Text("سعر الحبة (ر.س) *") },
+                        placeholder = { Text("مثلاً: 2.5") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("item_price_input")
+                    )
+
+                    OutlinedTextField(
+                        value = unitsPerPackageText,
+                        onValueChange = { unitsPerPackageText = it },
+                        label = { Text("سعة الحزمة (حبة) *") },
+                        placeholder = { Text("مثلاً: 24 أو 10") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).testTag("item_units_per_package_input")
+                    )
+                }
+
+                // Sale Unit Toggle: حزمة أم حبة مفردة
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "وحدة البيع في هذه الفاتورة:",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = (selectedUnit == SaleUnit.PACKAGE),
+                                onClick = { selectedUnit = SaleUnit.PACKAGE },
+                                label = {
+                                    Text(
+                                        text = "📦 بيع بالحزمة (${packageTypeName.ifBlank { "حزمة" }})",
+                                        fontWeight = if (selectedUnit == SaleUnit.PACKAGE) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).testTag("unit_package_chip")
+                            )
+
+                            FilterChip(
+                                selected = (selectedUnit == SaleUnit.PIECE),
+                                onClick = { selectedUnit = SaleUnit.PIECE },
+                                label = {
+                                    Text(
+                                        text = "🏷️ بيع بالحبة المفردة",
+                                        fontWeight = if (selectedUnit == SaleUnit.PIECE) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).testTag("unit_piece_chip")
+                            )
+                        }
+
+                        if (selectedUnit == SaleUnit.PACKAGE) {
+                            // Package count input + type name
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = packagesCountText,
+                                    onValueChange = { packagesCountText = it },
+                                    label = { Text("عدد الحزم") },
+                                    placeholder = { Text("مثلاً: 3") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f).testTag("item_packages_count_input")
+                                )
+
+                                OutlinedTextField(
+                                    value = packageTypeName,
+                                    onValueChange = { packageTypeName = it },
+                                    label = { Text("نوع الحزمة") },
+                                    placeholder = { Text("كرتونة، شد، صندوق") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f).testTag("item_package_type_input")
+                                )
+                            }
+
+                            // Package price breakdown
+                            Surface(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "سعر الحزمة الواحدة (${formatQuantity(units)} حبة):",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "${formatCurrency(price)} × ${formatQuantity(units)} = ${formatCurrency(singlePackagePrice)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        } else {
+                            // Piece count input
+                            OutlinedTextField(
+                                value = singlePiecesCountText,
+                                onValueChange = { singlePiecesCountText = it },
+                                label = { Text("عدد الحبات المفردة") },
+                                placeholder = { Text("مثلاً: 5") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("item_pieces_count_input")
+                            )
+
+                            Text(
+                                text = "💡 سعة الحزمة المسجلة لهذا المنتج هي (${formatQuantity(units)} حبة)، ويتم الحساب بالقطعة المفردة.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("وصف إضافي (اختياري)") },
+                    label = { Text("ملاحظات / وصف إضافي (اختياري)") },
                     maxLines = 2,
                     modifier = Modifier.fillMaxWidth().testTag("item_description_input")
                 )
 
-                // Live Calculation Box: سعر سلعة × (عدد حبات حزمة) × حزمة = الإجمالي
+                // Prominent Live Calculation Result Box
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
                     shape = RoundedCornerShape(10.dp),
@@ -700,33 +823,46 @@ fun EditItemDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
-                                    text = "الإجمالي التلقائي:",
+                                    text = "الإجمالي التلقائي للبند:",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer
                                 )
                             }
                             Text(
-                                text = formatCurrency(total),
+                                text = formatCurrency(totalAmount),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
 
-                        // Formula: سعر السلعة × (عدد حبات الحزمة) × الحزم
-                        Text(
-                            text = "${formatCurrency(price)} (سعر السلعة) × (${if (units == units.toLong().toDouble()) units.toLong().toString() else units.toString()} حبة بالحزمة) × ${if (packages == packages.toLong().toDouble()) packages.toLong().toString() else packages.toString()} حزمة = ${formatCurrency(total)}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-
-                        Text(
-                            text = "إجمالي الحبات: ${if (totalQty == totalQty.toLong().toDouble()) totalQty.toLong().toString() else totalQty.toString()} حبة",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                        )
+                        if (selectedUnit == SaleUnit.PACKAGE) {
+                            Text(
+                                text = "${formatCurrency(price)} (سعر الحبة) × (${formatQuantity(units)} سعة الحزمة) × ${formatQuantity(packages)} حزم = ${formatCurrency(totalAmount)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "إجمالي عدد القطع الفعلي: ${formatQuantity(totalQty)} قطعة",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                text = "${formatCurrency(price)} (سعر الحبة) × ${formatQuantity(pieces)} حبات = ${formatCurrency(totalAmount)}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "البيع بالحبة المفردة (سعة الحزمة للمنتج: ${formatQuantity(units)} حبة)",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
 
@@ -743,34 +879,38 @@ fun EditItemDialog(
             Button(
                 onClick = {
                     if (name.isBlank()) {
-                        errorMessage = "يرجى كتابة اسم السلعة"
+                        errorMessage = "يرجى كتابة اسم الصنف"
                         return@Button
                     }
                     val validUnits = unitsPerPackageText.toDoubleOrNull() ?: 1.0
-                    val validPackages = packagesCountText.toDoubleOrNull() ?: 1.0
                     val validPrice = priceText.toDoubleOrNull()
                     if (validPrice == null || validPrice < 0) {
                         errorMessage = "يرجى إدخال سعر صحيح"
                         return@Button
                     }
 
-                    val autoPackageTag = if (packageInfo.isNotBlank()) {
-                        packageInfo.trim()
-                    } else if (validUnits > 1.0) {
-                        "حزمة (${if (validUnits == validUnits.toLong().toDouble()) validUnits.toLong().toString() else validUnits.toString()} قطعة)"
-                    } else ""
+                    val validPacks = packagesCountText.toDoubleOrNull() ?: 1.0
+                    val validPieces = singlePiecesCountText.toDoubleOrNull() ?: 1.0
 
-                    val result = InvoiceItem(
+                    val packageBadgeStr = if (selectedUnit == SaleUnit.PACKAGE) {
+                        "${packageTypeName.ifBlank { "حزمة" }} (${formatQuantity(validUnits)} حبة)"
+                    } else {
+                        "حبة مفردة (سعة الحزمة ${formatQuantity(validUnits)})"
+                    }
+
+                    val finalItem = InvoiceItem(
                         id = initialItem?.id ?: UUID.randomUUID().toString(),
                         name = name.trim(),
-                        packageInfo = autoPackageTag,
+                        packageInfo = packageBadgeStr,
                         unitsPerPackage = validUnits,
-                        packagesCount = validPackages,
-                        quantity = validUnits * validPackages,
+                        packagesCount = if (selectedUnit == SaleUnit.PACKAGE) validPacks else 0.0,
+                        singlePiecesCount = if (selectedUnit == SaleUnit.PIECE) validPieces else 0.0,
+                        saleUnit = selectedUnit,
+                        quantity = if (selectedUnit == SaleUnit.PACKAGE) (validUnits * validPacks) else validPieces,
                         unitPrice = validPrice,
                         description = description.trim()
                     )
-                    onConfirm(result)
+                    onConfirm(finalItem)
                 },
                 modifier = Modifier.testTag("confirm_item_button")
             ) {

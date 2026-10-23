@@ -3,7 +3,6 @@ package com.example.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +51,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,11 +72,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.InvoiceItem
 import com.example.model.InvoiceStatus
 import com.example.model.PaymentMethod
+import com.example.model.SaleUnit
 import com.example.ui.InvoiceViewModel
 import com.example.ui.components.EditItemDialog
 import com.example.ui.components.PackageBadge
 import com.example.ui.components.formatCurrency
-import java.util.UUID
+import com.example.ui.components.formatQuantity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +88,7 @@ fun InvoiceEditScreen(
     modifier: Modifier = Modifier
 ) {
     val draftInvoice by viewModel.draftInvoice.collectAsStateWithLifecycle()
+    val availableProducts by viewModel.allProducts.collectAsStateWithLifecycle()
     val isDraftCompletedInitially = viewModel.isDraftCompletedInitially
 
     val draft = draftInvoice ?: run {
@@ -162,62 +164,67 @@ fun InvoiceEditScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text(
                             text = "الإجمالي النهائي:",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
                             text = formatCurrency(draft.grandTotal),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = MaterialTheme.colorScheme.primary
+                            fontSize = 20.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.testTag("draft_bottom_grand_total")
                         )
                     }
 
-                    Button(
-                        onClick = {
-                            viewModel.saveDraft { savedId ->
-                                onSaveSuccess(savedId)
-                            }
-                        },
-                        modifier = Modifier
-                            .height(48.dp)
-                            .testTag("bottom_save_invoice_button")
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "حفظ التعديلات",
-                            fontWeight = FontWeight.Bold
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.cancelDraft()
+                                onNavigateBack()
+                            },
+                            modifier = Modifier.testTag("cancel_edit_button")
+                        ) {
+                            Text("إلغاء")
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.saveDraft { savedId ->
+                                    onSaveSuccess(savedId)
+                                }
+                            },
+                            modifier = Modifier.testTag("confirm_save_button")
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("حفظ")
+                        }
                     }
                 }
             }
-        },
-        modifier = modifier
-    ) { innerPadding ->
+        }
+    ) { padding ->
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Notice banner when editing a completed invoice
+            // Post Completion Notice Banner
             if (isDraftCompletedInitially || draft.status == InvoiceStatus.COMPLETED) {
                 Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFEFF6FF)
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().testTag("completed_edit_notice_banner")
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -226,27 +233,27 @@ fun InvoiceEditScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF2563EB)),
+                                .background(Color(0xFF3B82F6)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column {
                             Text(
-                                text = "تعديل فاتورة مكتملة متاح بالكامل",
+                                text = "ميزة التعديل بعد الإكمال مفعّلة",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = Color(0xFF1E40AF)
                             )
                             Text(
-                                text = "يمكنك تعديل أي بند أو تغيير الأسعار وتحديث المدفوع. ستتم إعادة الحساب وحفظ الفاتورة مباشرة.",
+                                text = "يمكنك تعديل أي سلعة، تغيير سعة الحزمة، أو التبديل بين الحزمة والقطعة بحرية تامة.",
                                 fontSize = 11.sp,
                                 color = Color(0xFF1E3A8A),
                                 lineHeight = 15.sp
@@ -373,7 +380,7 @@ fun InvoiceEditScreen(
                 }
             }
 
-            // Line Items Section - CRITICAL (Add / Edit / Remove items)
+            // Line Items Section (With variable package capacity & piece/package flexibility)
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
@@ -396,7 +403,7 @@ fun InvoiceEditScreen(
                                 fontSize = 15.sp
                             )
                             Text(
-                                text = "اضغط على القلم للتعديل أو أضف سلعة جديدة",
+                                text = "يدعم سعات مختلفة للحزم (24، 10، إلخ) والبيع بالحزمة أو بالحبة",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -473,6 +480,36 @@ fun InvoiceEditScreen(
                                             }
                                         }
 
+                                        // Sale Unit Badge & Quick Toggle
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                color = if (item.saleUnit == SaleUnit.PACKAGE) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${item.saleUnit.iconText} بيع بـ ${item.saleUnit.labelAr} (سعة الحزمة: ${formatQuantity(item.unitsPerPackage)} حبة)",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (item.saleUnit == SaleUnit.PACKAGE) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            TextButton(
+                                                onClick = { viewModel.toggleDraftItemSaleUnit(item.id) },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                                modifier = Modifier.testTag("toggle_unit_${index}")
+                                            ) {
+                                                Text(
+                                                    text = if (item.saleUnit == SaleUnit.PACKAGE) "التحويل للبيع بالحبة" else "التحويل للبيع بالحزمة",
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+                                        }
+
                                         if (item.description.isNotBlank()) {
                                             Text(
                                                 text = item.description,
@@ -481,7 +518,7 @@ fun InvoiceEditScreen(
                                             )
                                         }
 
-                                        // Automatic calculation row with package stepper & total price
+                                        // Automatic Calculation Stepper Row
                                         Column(
                                             verticalArrangement = Arrangement.spacedBy(4.dp),
                                             modifier = Modifier.padding(top = 2.dp)
@@ -490,7 +527,7 @@ fun InvoiceEditScreen(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                // Package / Quantity Stepper
+                                                // Quantity / Package Stepper
                                                 Surface(
                                                     color = MaterialTheme.colorScheme.surface,
                                                     shape = RoundedCornerShape(8.dp),
@@ -500,8 +537,8 @@ fun InvoiceEditScreen(
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         IconButton(
-                                                            onClick = { viewModel.decrementDraftItemQuantity(item.id) },
-                                                            enabled = if (item.unitsPerPackage > 1.0) item.packagesCount > 1.0 else item.quantity > 1.0,
+                                                            onClick = { viewModel.decrementDraftItem(item.id) },
+                                                            enabled = if (item.saleUnit == SaleUnit.PACKAGE) item.packagesCount > 1.0 else item.quantity > 1.0,
                                                             modifier = Modifier.size(28.dp).testTag("decrease_qty_${index}")
                                                         ) {
                                                             Icon(
@@ -511,17 +548,17 @@ fun InvoiceEditScreen(
                                                             )
                                                         }
                                                         Text(
-                                                            text = if (item.unitsPerPackage > 1.0) {
-                                                                "${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزم"
-                                                            } else {
-                                                                if (item.quantity == item.quantity.toLong().toDouble()) item.quantity.toLong().toString() else item.quantity.toString()
-                                                            },
+                                                             text = if (item.saleUnit == SaleUnit.PACKAGE) {
+                                                                 "${formatQuantity(item.packagesCount)} حزمة (${formatQuantity(item.effectiveQuantity)} حبة)"
+                                                             } else {
+                                                                 "${formatQuantity(item.quantity)} حبة"
+                                                             },
                                                             fontWeight = FontWeight.Bold,
                                                             fontSize = 12.sp,
                                                             modifier = Modifier.padding(horizontal = 4.dp).testTag("item_qty_label_${index}")
                                                         )
                                                         IconButton(
-                                                            onClick = { viewModel.incrementDraftItemQuantity(item.id) },
+                                                            onClick = { viewModel.incrementDraftItem(item.id) },
                                                             modifier = Modifier.size(28.dp).testTag("increase_qty_${index}")
                                                         ) {
                                                             Icon(
@@ -541,7 +578,7 @@ fun InvoiceEditScreen(
 
                                                 Spacer(modifier = Modifier.weight(1f))
 
-                                                // Real-time calculated total
+                                                // Real-time calculated line total
                                                 Surface(
                                                     color = MaterialTheme.colorScheme.primaryContainer,
                                                     shape = RoundedCornerShape(6.dp)
@@ -556,15 +593,28 @@ fun InvoiceEditScreen(
                                                 }
                                             }
 
-                                            if (item.unitsPerPackage > 1.0) {
+                                            // Explicit formula calculation display
+                                            if (item.saleUnit == SaleUnit.PACKAGE) {
                                                 Text(
-                                                    text = "${formatCurrency(item.unitPrice)} (سعر السلعة) × (${if (item.unitsPerPackage == item.unitsPerPackage.toLong().toDouble()) item.unitsPerPackage.toLong().toString() else item.unitsPerPackage.toString()} حبة) × ${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزمة = ${formatCurrency(item.total)}",
+                                                    text = "${formatCurrency(item.unitPrice)} (سعر الحبة) × (${formatQuantity(item.unitsPerPackage)} سعة الحزمة) × ${formatQuantity(item.packagesCount)} حزمة = ${formatCurrency(item.total)}",
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.primary,
                                                     fontWeight = FontWeight.Medium
                                                 )
                                                 Text(
-                                                    text = "سعر الحزمة الواحدة: ${formatCurrency(item.packagePrice)}",
+                                                    text = "سعر الحزمة: ${formatCurrency(item.packagePrice)} (إجمالي: ${formatQuantity(item.effectiveQuantity)} قطعة)",
+                                                    fontSize = 10.sp,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = "${formatCurrency(item.unitPrice)} (سعر الحبة) × ${formatQuantity(item.quantity)} حبة = ${formatCurrency(item.total)}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = "بيع بالحبة المفردة (سعة الحزمة للمنتج: ${formatQuantity(item.unitsPerPackage)} حبة)",
                                                     fontSize = 10.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -606,7 +656,7 @@ fun InvoiceEditScreen(
                 }
             }
 
-            // Discounts & Tax & Financial adjustments
+            // Financial Calculation Section
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
@@ -615,136 +665,181 @@ fun InvoiceEditScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "الخصومات والضريبة",
+                        text = "تفاصيل الحساب المالي والضريبة",
                         fontWeight = FontWeight.Bold,
                         fontSize = 15.sp
                     )
 
-                    // Discount row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = if (draft.discountAmount == 0.0) "" else draft.discountAmount.toString(),
-                            onValueChange = {
-                                val value = it.toDoubleOrNull() ?: 0.0
-                                viewModel.updateDraftDiscount(value, draft.isDiscountPercentage)
-                            },
-                            label = { Text("قيمة الخصم") },
-                            placeholder = { Text("0") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f).testTag("edit_discount_input")
-                        )
-
-                        FilterChip(
-                            selected = draft.isDiscountPercentage,
-                            onClick = {
-                                viewModel.updateDraftDiscount(draft.discountAmount, !draft.isDiscountPercentage)
-                            },
-                            label = { Text(if (draft.isDiscountPercentage) "نسبة مئوية %" else "مبلغ ثابت ر.س") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Percent, contentDescription = null, modifier = Modifier.size(14.dp))
-                            },
-                            modifier = Modifier.testTag("discount_type_chip")
-                        )
-                    }
-
-                    // VAT Row
+                    // Subtotal
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "ضريبة القيمة المضافة (15% VAT)",
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 13.sp
-                            )
-                            Text(
-                                text = "الضريبة المحسوبة: ${formatCurrency(draft.calculatedTax)}",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Switch(
-                            checked = draft.taxPercentage > 0,
-                            onCheckedChange = { checked ->
-                                viewModel.updateDraftTax(if (checked) 15.0 else 0.0)
-                            },
-                            modifier = Modifier.testTag("tax_switch")
+                        Text(text = "المجموع الفرعي:", fontSize = 14.sp)
+                        Text(
+                            text = formatCurrency(draft.subtotal),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
                         )
                     }
-                }
-            }
 
-            // Payment Status & Method Section
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "حالة وطريقة السداد",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
+                    HorizontalDivider()
 
-                    // Status Chips
-                    Text(text = "حالة الفاتورة:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        InvoiceStatus.entries.forEach { status ->
-                            FilterChip(
-                                selected = draft.status == status,
-                                onClick = { viewModel.updateDraftStatus(status) },
-                                label = { Text(status.labelAr) },
-                                leadingIcon = {
-                                    if (status == InvoiceStatus.COMPLETED) {
-                                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    }
-                                },
-                                modifier = Modifier.testTag("status_chip_${status.name}")
+                    // Discount Section
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "الخصم:", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = if (draft.isDiscountPercentage) "نسبة مئوية (%)" else "مبلغ ثابت (ر.س)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Switch(
+                                    checked = draft.isDiscountPercentage,
+                                    onCheckedChange = { viewModel.updateDraftDiscount(draft.discountAmount, it) },
+                                    modifier = Modifier.testTag("discount_type_switch")
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = if (draft.discountAmount > 0) draft.discountAmount.toString() else "",
+                            onValueChange = {
+                                val value = it.toDoubleOrNull() ?: 0.0
+                                viewModel.updateDraftDiscount(value, draft.isDiscountPercentage)
+                            },
+                            label = { Text(if (draft.isDiscountPercentage) "نسبة الخصم (%)" else "قيمة الخصم (ر.س)") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("edit_discount_input")
+                        )
+
+                        if (draft.calculatedDiscount > 0) {
+                            Text(
+                                text = "مبلغ الخصم الفعلي: ${formatCurrency(draft.calculatedDiscount)}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
 
-                    // Amount Paid (especially when partially paid)
-                    if (draft.status == InvoiceStatus.PARTIALLY_PAID) {
+                    HorizontalDivider()
+
+                    // Tax Section
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "ضريبة القيمة المضافة:", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                text = formatCurrency(draft.calculatedTax),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(0.0, 5.0, 15.0).forEach { rate ->
+                                FilterChip(
+                                    selected = draft.taxPercentage == rate,
+                                    onClick = { viewModel.updateDraftTax(rate) },
+                                    label = { Text(if (rate == 0.0) "بدون ضريبة (0%)" else "$rate%") },
+                                    modifier = Modifier.weight(1f).testTag("tax_chip_${rate.toInt()}")
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // Grand Total
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "الإجمالي النهائي المستحق:",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = formatCurrency(draft.grandTotal),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.testTag("draft_grand_total_label")
+                            )
+                        }
+                    }
+
+                    // Payment Amount / Paid Section
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "المبلغ المدفوع:", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            TextButton(
+                                onClick = { viewModel.updateDraftPaidAmount(draft.grandTotal) },
+                                modifier = Modifier.testTag("pay_full_button")
+                            ) {
+                                Text("سداد المبلغ بالكامل", fontSize = 12.sp)
+                            }
+                        }
+
                         OutlinedTextField(
-                            value = if (draft.paidAmount == 0.0) "" else draft.paidAmount.toString(),
+                            value = if (draft.paidAmount > 0) draft.paidAmount.toString() else "",
                             onValueChange = {
-                                val amount = it.toDoubleOrNull() ?: 0.0
-                                viewModel.updateDraftPaidAmount(amount)
+                                val value = it.toDoubleOrNull() ?: 0.0
+                                viewModel.updateDraftPaidAmount(value)
                             },
-                            label = { Text("المبلغ المدفوع (ر.س) *") },
+                            label = { Text("المبلغ المستلم (ر.س)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("edit_paid_amount_input")
                         )
 
-                        Text(
-                            text = "المتبقي للسداد: ${formatCurrency(draft.remainingBalance)}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB06000)
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "المتبقي على العميل:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = formatCurrency(draft.remainingBalance),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = if (draft.remainingBalance > 0) Color(0xFFB06000) else Color(0xFF137333)
+                            )
+                        }
                     }
 
                     HorizontalDivider()
@@ -806,10 +901,11 @@ fun InvoiceEditScreen(
         }
     }
 
-    // Dialog for editing an existing item
+    // Dialog for editing an existing item (passes catalog products)
     editingItem?.let { itemToEdit ->
         EditItemDialog(
             initialItem = itemToEdit,
+            availableProducts = availableProducts,
             onDismiss = { editingItem = null },
             onConfirm = { updatedItem ->
                 viewModel.updateDraftItem(updatedItem)
@@ -818,10 +914,11 @@ fun InvoiceEditScreen(
         )
     }
 
-    // Dialog for adding a new item
+    // Dialog for adding a new item (passes catalog products)
     if (isAddingItem) {
         EditItemDialog(
             initialItem = null,
+            availableProducts = availableProducts,
             onDismiss = { isAddingItem = false },
             onConfirm = { newItem ->
                 viewModel.addDraftItem(newItem)

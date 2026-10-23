@@ -16,21 +16,70 @@ enum class PaymentMethod(val labelAr: String, val labelEn: String) {
     CHEQUE("شيك", "Cheque")
 }
 
+/**
+ * وحدة البيع: حزمة (كرتون/صندوق/ربطة) أو حبة مفردة (قطعة)
+ */
+enum class SaleUnit(val labelAr: String, val labelEn: String, val iconText: String) {
+    PACKAGE("حزمة", "Package", "📦"),
+    PIECE("حبة مفردة", "Piece", "🏷️")
+}
+
+/**
+ * بيانات المنتج في دليل المنتجات (Catalog Product)
+ * يحدد سعة الحزمة (عدد القطع الفردية في الحزمة) وسعر القطعة الافتراضي
+ */
+data class Product(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String = "",
+    val defaultUnitPrice: Double = 0.0,
+    val unitsPerPackage: Double = 12.0, // سعة الحزمة لهذا المنتج بالتحديد (مثلاً 24، 10، إلخ)
+    val packageTypeName: String = "كرتونة", // كرتونة، صندوق، باقة، شد، باكيت...
+    val description: String = ""
+)
+
+/**
+ * بند في الفاتورة يدعم:
+ * 1. سعة الحزمة المخصصة لهذا المنتج (unitsPerPackage مثل 24 أو 10 أو 6)
+ * 2. وحدة البيع المختارة (حزمة أو حبة مفردة)
+ * 3. الحساب التلقائي للقطع الإجمالية والإجمالي المالي
+ */
 data class InvoiceItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "",
     val packageInfo: String = "",
-    val unitsPerPackage: Double = 1.0,  // كم في الحزمة (مثلاً 12)
-    val packagesCount: Double = 1.0,    // عدد الحزمات
-    val quantity: Double = unitsPerPackage * packagesCount, // إجمالي القطع
-    val unitPrice: Double = 0.0,
+    val unitsPerPackage: Double = 12.0,  // سعة الحزمة المحددة لهذا الصنف (مثلاً 24، 10، 6)
+    val packagesCount: Double = 1.0,    // عدد الحزم إذا كان البيع بالحزمة
+    val singlePiecesCount: Double = 0.0,// عدد الحبات إذا كان البيع بالحبة المفردة
+    val saleUnit: SaleUnit = SaleUnit.PACKAGE, // نوع البيع: حزمة أو حبة مفردة
+    val quantity: Double = if (saleUnit == SaleUnit.PACKAGE) (unitsPerPackage * packagesCount) else singlePiecesCount, // إجمالي عدد القطع الفعلي
+    val unitPrice: Double = 0.0,        // سعر القطعة الواحدة
     val description: String = ""
 ) {
     val total: Double
-        get() = quantity * unitPrice
+        get() = if (saleUnit == SaleUnit.PACKAGE) {
+            (packagesCount * unitsPerPackage * unitPrice).coerceAtLeast(0.0)
+        } else {
+            (quantity * unitPrice).coerceAtLeast(0.0)
+        }
 
     val packagePrice: Double
-        get() = unitsPerPackage * unitPrice
+        get() = (unitsPerPackage * unitPrice).coerceAtLeast(0.0)
+
+    val effectiveQuantity: Double
+        get() = if (saleUnit == SaleUnit.PACKAGE) (unitsPerPackage * packagesCount) else quantity
+
+    /**
+     * نص توضيحي للكمية والوحدة
+     */
+    val quantitySummaryAr: String
+        get() = if (saleUnit == SaleUnit.PACKAGE) {
+            val packsStr = if (packagesCount == packagesCount.toLong().toDouble()) packagesCount.toLong().toString() else packagesCount.toString()
+            val totalPiecesStr = if (effectiveQuantity == effectiveQuantity.toLong().toDouble()) effectiveQuantity.toLong().toString() else effectiveQuantity.toString()
+            "$packsStr حزمة ($totalPiecesStr قطعة)"
+        } else {
+            val piecesStr = if (quantity == quantity.toLong().toDouble()) quantity.toLong().toString() else quantity.toString()
+            "$piecesStr حبة مفردة"
+        }
 }
 
 data class Invoice(

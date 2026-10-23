@@ -4,6 +4,8 @@ import com.example.model.Invoice
 import com.example.model.InvoiceItem
 import com.example.model.InvoiceStatus
 import com.example.model.PaymentMethod
+import com.example.model.Product
+import com.example.model.SaleUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
@@ -11,9 +13,16 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-class InvoiceRepository(private val invoiceDao: InvoiceDao) {
+class InvoiceRepository(
+    private val invoiceDao: InvoiceDao,
+    private val productDao: ProductDao
+) {
 
     val allInvoices: Flow<List<Invoice>> = invoiceDao.getAllInvoices().map { entities ->
+        entities.map { it.toDomain() }
+    }
+
+    val allProducts: Flow<List<Product>> = productDao.getAllProducts().map { entities ->
         entities.map { it.toDomain() }
     }
 
@@ -69,8 +78,8 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
         return invoiceDao.insertInvoice(InvoiceEntity.fromDomain(copy))
     }
 
-    suspend fun toggleCompletedStatus(invoice: Long): Boolean {
-        val current = getInvoiceById(invoice) ?: return false
+    suspend fun toggleCompletedStatus(invoiceId: Long): Boolean {
+        val current = getInvoiceById(invoiceId) ?: return false
         val now = System.currentTimeMillis()
         val newStatus = if (current.status == InvoiceStatus.COMPLETED) {
             InvoiceStatus.PENDING
@@ -93,69 +102,94 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
         return true
     }
 
+    suspend fun saveProduct(product: Product) {
+        productDao.insertProduct(ProductEntity.fromDomain(product))
+    }
+
+    suspend fun deleteProduct(productId: String) {
+        productDao.deleteProductById(productId)
+    }
+
     suspend fun populateSampleDataIfEmpty() {
+        populateSampleProductsIfEmpty()
+
         val count = invoiceDao.getInvoiceCount()
         if (count > 0) return
 
         val now = System.currentTimeMillis()
         val dayMillis = 24 * 60 * 60 * 1000L
 
-        // 1. A completed invoice that user can edit anytime!
+        // 1. A completed invoice with variable package capacities (e.g. 24 and 10)
         val completedInvoice = Invoice(
             id = 0L,
             invoiceNumber = "INV-2026-101",
-            customerName = "شركة الأفق للتقنية",
+            customerName = "سوبرماركت التوفير الحديث",
             customerPhone = "+966 55 123 4567",
-            customerEmail = "info@alofooq-tech.sa",
+            customerEmail = "orders@tawfeer-market.sa",
             issueDate = now - (3 * dayMillis),
             dueDate = now - (1 * dayMillis),
             status = InvoiceStatus.COMPLETED,
             paymentMethod = PaymentMethod.BANK_TRANSFER,
             items = listOf(
+                // Product with 24 units per package (كرتونة عصير)
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
-                    name = "تصميم واجهة متجر إلكتروني",
-                    packageInfo = "حزمة برمجية متكاملة",
-                    quantity = 1.0,
-                    unitPrice = 3500.0,
-                    description = "تصميم تجربة وواجهة المستخدم كاملة مع الهوية"
+                    name = "عصير برتقال طبيعي 250 مل",
+                    packageInfo = "كرتونة (24 حبة)",
+                    unitsPerPackage = 24.0,
+                    packagesCount = 5.0,
+                    singlePiecesCount = 0.0,
+                    saleUnit = SaleUnit.PACKAGE,
+                    quantity = 120.0,
+                    unitPrice = 2.50,
+                    description = "عصير طازج معبأ - كرتونة سعة 24 حبة"
                 ),
+                // Product with 10 units per package (شد معجون طماطم)
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
-                    name = "تطوير لوحة تحكم متقدمة",
-                    packageInfo = "حزمة القياس والتقارير",
-                    quantity = 1.0,
-                    unitPrice = 2800.0,
-                    description = "ربط واجهات برمجة التطبيقات مع تقارير المبيعات"
+                    name = "معجون طماطم لونا 135 جم",
+                    packageInfo = "شد (10 حبات)",
+                    unitsPerPackage = 10.0,
+                    packagesCount = 4.0,
+                    singlePiecesCount = 0.0,
+                    saleUnit = SaleUnit.PACKAGE,
+                    quantity = 40.0,
+                    unitPrice = 3.00,
+                    description = "معجون طماطم مركز - شد 10 حبات"
                 ),
+                // Product sold by SINGLE PIECE (حبة مفردة) with defined package capacity of 12
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
-                    name = "دعم فني وصيانة شهرية",
-                    packageInfo = "حزمة الدعم الفني",
-                    quantity = 2.0,
-                    unitPrice = 600.0,
-                    description = "دعم على مدار الساعة ومراقبة الأداء"
+                    name = "زيت زيتون بكر ممتاز 500 مل",
+                    packageInfo = "كرتونة (12 حبة)",
+                    unitsPerPackage = 12.0,
+                    packagesCount = 0.0,
+                    singlePiecesCount = 3.0,
+                    saleUnit = SaleUnit.PIECE,
+                    quantity = 3.0,
+                    unitPrice = 25.00,
+                    description = "بيع قطاعي بالحبة المفردة"
                 )
             ),
-            discountAmount = 300.0,
+            discountAmount = 15.0,
             isDiscountPercentage = false,
             taxPercentage = 15.0,
-            paidAmount = 8280.0, // Fully paid
-            notes = "تم سداد الفاتورة بالكامل عبر تحويل سريع إلى مصرف الراجحي.",
-            terms = "الفاتورة صالحة ومعتمدة. تخضع لسياسة الضمان لمدة 3 أشهر.",
+            paidAmount = 552.0, // Fully paid
+            notes = "تم تسليم الطلبية كاملة وسداد القيمة عبر تحويل بنكي فوري.",
+            terms = "شكراً لتعاملكم معنا. البضاعة المباعة تخضع لسياسة الفحص عند الاستلام.",
             createdAt = now - (3 * dayMillis),
             updatedAt = now - (2 * dayMillis),
             completedAt = now - (2 * dayMillis),
             isEditedAfterCompletion = false
         )
 
-        // 2. A pending invoice
+        // 2. A pending invoice with water bottles (40 per carton) and biscuits (18 per box)
         val pendingInvoice = Invoice(
             id = 0L,
             invoiceNumber = "INV-2026-102",
-            customerName = "مؤسسة النور للتجارة",
+            customerName = "مؤسسة النور للتوريدات",
             customerPhone = "+966 50 987 6543",
-            customerEmail = "alnoor.trading@gmail.com",
+            customerEmail = "alnoor.supply@gmail.com",
             issueDate = now - (1 * dayMillis),
             dueDate = now + (5 * dayMillis),
             status = InvoiceStatus.PENDING,
@@ -163,24 +197,34 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
             items = listOf(
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
-                    name = "تركيب أنظمة كاميرات المراقبة",
-                    quantity = 4.0,
-                    unitPrice = 450.0,
-                    description = "كاميرات بدقة 4K خارجية مقاومة للطقس"
+                    name = "مياه شرب نقية 330 مل",
+                    packageInfo = "كرتونة (40 حبة)",
+                    unitsPerPackage = 40.0,
+                    packagesCount = 10.0,
+                    singlePiecesCount = 0.0,
+                    saleUnit = SaleUnit.PACKAGE,
+                    quantity = 400.0,
+                    unitPrice = 0.85,
+                    description = "كراتين مياه سعة 40 حبة"
                 ),
                 InvoiceItem(
                     id = UUID.randomUUID().toString(),
-                    name = "جهاز تسجيل شبكي NVR 8 قنوات",
-                    quantity = 1.0,
-                    unitPrice = 1200.0,
-                    description = "سعة تخزينية 4 تيرابايت مع ضبط الشبكة"
+                    name = "بسكويت شاي فاخر",
+                    packageInfo = "صندوق (18 باكيت)",
+                    unitsPerPackage = 18.0,
+                    packagesCount = 3.0,
+                    singlePiecesCount = 0.0,
+                    saleUnit = SaleUnit.PACKAGE,
+                    quantity = 54.0,
+                    unitPrice = 2.00,
+                    description = "صندوق 18 حبة"
                 )
             ),
-            discountAmount = 10.0,
+            discountAmount = 5.0,
             isDiscountPercentage = true,
             taxPercentage = 15.0,
             paidAmount = 0.0,
-            notes = "يرجى تسديد الدفعة قبل موعد الاستحقاق لبدء التشغيل الفعلي.",
+            notes = "يرجى سداد المبلغ قبل موعد الاستحقاق الموضح أعلاه.",
             terms = "الدفع خلال 5 أيام عمل من تاريخ الفاتورة.",
             createdAt = now - (1 * dayMillis),
             updatedAt = now - (1 * dayMillis),
@@ -188,41 +232,81 @@ class InvoiceRepository(private val invoiceDao: InvoiceDao) {
             isEditedAfterCompletion = false
         )
 
-        // 3. A partially paid invoice
-        val partialInvoice = Invoice(
-            id = 0L,
-            invoiceNumber = "INV-2026-103",
-            customerName = "مكتب المهندس خالد العتيبي",
-            customerPhone = "+966 54 321 0000",
-            customerEmail = "khaled.arch@outlook.com",
-            issueDate = now,
-            dueDate = now + (10 * dayMillis),
-            status = InvoiceStatus.PARTIALLY_PAID,
-            paymentMethod = PaymentMethod.CASH,
-            items = listOf(
-                InvoiceItem(
-                    id = UUID.randomUUID().toString(),
-                    name = "استشارات هندسية ومعاينة موقع",
-                    quantity = 3.0,
-                    unitPrice = 800.0,
-                    description = "معاينة هندسية وتقارير فحص التربة"
-                )
-            ),
-            discountAmount = 0.0,
-            isDiscountPercentage = false,
-            taxPercentage = 15.0,
-            paidAmount = 1500.0, // Partial payment
-            notes = "تم استلام دفعة مقدمة نقداً وقدرها 1,500 ريال والمتبقي عند تسليم التقرير.",
-            terms = "تسليم المخططات مشروط باستكمال كامل المبلغ المتبقي.",
-            createdAt = now,
-            updatedAt = now,
-            completedAt = null,
-            isEditedAfterCompletion = false
-        )
-
         invoiceDao.insertInvoice(InvoiceEntity.fromDomain(completedInvoice))
         invoiceDao.insertInvoice(InvoiceEntity.fromDomain(pendingInvoice))
-        invoiceDao.insertInvoice(InvoiceEntity.fromDomain(partialInvoice))
+    }
+
+    private suspend fun populateSampleProductsIfEmpty() {
+        if (productDao.getProductCount() > 0) return
+
+        val sampleCatalog = listOf(
+            Product(
+                id = "p-juice-24",
+                name = "عصير برتقال طبيعي 250 مل",
+                defaultUnitPrice = 2.50,
+                unitsPerPackage = 24.0,
+                packageTypeName = "كرتونة",
+                description = "كرتونة تحتوي على 24 علبة عصير"
+            ),
+            Product(
+                id = "p-tomato-10",
+                name = "معجون طماطم لونا 135 جم",
+                defaultUnitPrice = 3.00,
+                unitsPerPackage = 10.0,
+                packageTypeName = "شد",
+                description = "شد مغلّف يحتوي على 10 حبات"
+            ),
+            Product(
+                id = "p-water-40",
+                name = "مياه شرب نقية 330 مل",
+                defaultUnitPrice = 0.85,
+                unitsPerPackage = 40.0,
+                packageTypeName = "كرتونة",
+                description = "كرتونة اقتصادية تحتوي على 40 قارورة"
+            ),
+            Product(
+                id = "p-milk-12",
+                name = "حليب نادك كامل الدسم 1 لتر",
+                defaultUnitPrice = 5.50,
+                unitsPerPackage = 12.0,
+                packageTypeName = "صندوق",
+                description = "صندوق 12 عبوة تترا بريك"
+            ),
+            Product(
+                id = "p-biscuit-18",
+                name = "بسكويت شاي فاخر",
+                defaultUnitPrice = 2.00,
+                unitsPerPackage = 18.0,
+                packageTypeName = "صندوق",
+                description = "صندوق يحتوي على 18 باكيت"
+            ),
+            Product(
+                id = "p-tissue-6",
+                name = "مناديل فاخرة معقمة",
+                defaultUnitPrice = 4.50,
+                unitsPerPackage = 6.0,
+                packageTypeName = "ربطة",
+                description = "ربطة تحتوي على 6 علب مناديل"
+            ),
+            Product(
+                id = "p-oil-12",
+                name = "زيت زيتون بكر ممتاز 500 مل",
+                defaultUnitPrice = 25.00,
+                unitsPerPackage = 12.0,
+                packageTypeName = "كرتونة",
+                description = "كرتونة زجاجات زيت زيتون 12 حبة"
+            ),
+            Product(
+                id = "p-softdrink-30",
+                name = "مشروب غازي كانز 330 مل",
+                defaultUnitPrice = 3.00,
+                unitsPerPackage = 30.0,
+                packageTypeName = "بلتة",
+                description = "بلتة كانز 30 حبة"
+            )
+        )
+
+        productDao.insertAll(sampleCatalog.map { ProductEntity.fromDomain(it) })
     }
 
     fun generateInvoiceNumber(prefix: String = "INV"): String {

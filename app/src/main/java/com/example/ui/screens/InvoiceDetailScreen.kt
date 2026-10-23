@@ -66,22 +66,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.Invoice
 import com.example.model.InvoiceStatus
+import com.example.model.SaleUnit
 import com.example.ui.InvoiceViewModel
 import com.example.ui.components.InvoiceStatusChip
 import com.example.ui.components.PackageBadge
 import com.example.ui.components.PostCompletionBanner
 import com.example.ui.components.formatCurrency
 import com.example.ui.components.formatDate
+import com.example.ui.components.formatQuantity
 
 fun shareInvoiceDetails(context: Context, invoice: Invoice) {
     val itemsSummary = invoice.items.joinToString("\n") {
         val packText = if (it.packageInfo.isNotBlank()) " [${it.packageInfo}]" else ""
-        val calcDetails = if (it.unitsPerPackage > 1.0) {
-            " (${formatCurrency(it.unitPrice)} سعر السلعة × ${if (it.unitsPerPackage == it.unitsPerPackage.toLong().toDouble()) it.unitsPerPackage.toLong().toString() else it.unitsPerPackage.toString()} حبة بالحزمة × ${if (it.packagesCount == it.packagesCount.toLong().toDouble()) it.packagesCount.toLong().toString() else it.packagesCount.toString()} حزمة)"
+        val calcDetails = if (it.saleUnit == SaleUnit.PACKAGE) {
+            " (${formatCurrency(it.unitPrice)} سعر الحبة × ${formatQuantity(it.unitsPerPackage)} سعة الحزمة × ${formatQuantity(it.packagesCount)} حزمة = ${formatCurrency(it.total)} - إجمالي ${formatQuantity(it.effectiveQuantity)} قطعة)"
         } else {
-            " (${it.quantity} × ${formatCurrency(it.unitPrice)})"
+            " (${formatCurrency(it.unitPrice)} سعر الحبة × ${formatQuantity(it.quantity)} حبة مفردة = ${formatCurrency(it.total)} - سعة الحزمة: ${formatQuantity(it.unitsPerPackage)})"
         }
-        "• ${it.name}$packText$calcDetails = ${formatCurrency(it.total)}"
+        "• ${it.name}$packText$calcDetails"
     }
 
     val text = """
@@ -90,7 +92,7 @@ fun shareInvoiceDetails(context: Context, invoice: Invoice) {
         📅 تاريخ الإصدار: ${formatDate(invoice.issueDate)}
         الحالة: ${invoice.status.labelAr}
         ------------------------------
-        البنود:
+        البنود والكميات:
         $itemsSummary
         ------------------------------
         المجموع الفرعي: ${formatCurrency(invoice.subtotal)}
@@ -201,54 +203,60 @@ fun InvoiceDetailScreen(
                             containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (invoice.status == InvoiceStatus.COMPLETED) "تعديل الفاتورة المكتملة" else "تعديل الفاتورة",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
+                            fontWeight = FontWeight.Bold
                         )
                     }
 
-                    // Toggle status button
+                    // Duplicate as new draft button
                     OutlinedButton(
                         onClick = {
-                            viewModel.toggleCompleted(invoice.id)
+                            viewModel.duplicateInvoice(invoice.id)
+                            onBack()
                         },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
-                            .testTag("detail_toggle_status_button")
+                            .testTag("detail_duplicate_button")
                     ) {
-                        Text(
-                            text = if (invoice.status == InvoiceStatus.COMPLETED) "تعيين كقيد الانتظار" else "تعيين كمكتملة",
-                            fontSize = 12.sp,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("نسخ كجديدة", fontSize = 13.sp)
                     }
                 }
             }
-        },
-        modifier = modifier
-    ) { innerPadding ->
+        }
+    ) { padding ->
         Column(
-            modifier = Modifier
+            modifier = modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header card
+            // Post Completion Alert / Edit Status Banner
+            PostCompletionBanner(
+                isCompleted = invoice.status == InvoiceStatus.COMPLETED,
+                isEditedAfterCompletion = invoice.isEditedAfterCompletion
+            )
+
+            // Invoice Header Card
             Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -263,16 +271,15 @@ fun InvoiceDetailScreen(
                             Text(
                                 text = invoice.invoiceNumber,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
+                                fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
+
                         InvoiceStatusChip(status = invoice.status)
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider()
-                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -285,8 +292,8 @@ fun InvoiceDetailScreen(
                             Icon(
                                 imageVector = Icons.Default.CalendarToday,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Column {
                                 Text(
@@ -296,7 +303,7 @@ fun InvoiceDetailScreen(
                                 )
                                 Text(
                                     text = formatDate(invoice.issueDate),
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -309,8 +316,8 @@ fun InvoiceDetailScreen(
                             Icon(
                                 imageVector = Icons.Default.CalendarToday,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Column {
                                 Text(
@@ -320,7 +327,7 @@ fun InvoiceDetailScreen(
                                 )
                                 Text(
                                     text = formatDate(invoice.dueDate),
-                                    fontSize = 13.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 )
                             }
@@ -329,13 +336,7 @@ fun InvoiceDetailScreen(
                 }
             }
 
-            // Post-completion editing callout
-            PostCompletionBanner(
-                isCompleted = invoice.status == InvoiceStatus.COMPLETED,
-                isEditedAfterCompletion = invoice.isEditedAfterCompletion
-            )
-
-            // Client Information
+            // Customer Details Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
@@ -348,13 +349,13 @@ fun InvoiceDetailScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Person,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                         Text(
                             text = "بيانات العميل",
@@ -366,7 +367,7 @@ fun InvoiceDetailScreen(
                     Text(
                         text = invoice.customerName,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 15.sp
+                        fontSize = 16.sp
                     )
 
                     if (invoice.customerPhone.isNotBlank()) {
@@ -409,7 +410,7 @@ fun InvoiceDetailScreen(
                 }
             }
 
-            // Items List
+            // Items List Table Card
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
@@ -422,11 +423,18 @@ fun InvoiceDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "بنود الفاتورة (${invoice.items.size})",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
+                        Column {
+                            Text(
+                                text = "بنود وسلع الفاتورة (${invoice.items.size})",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "توضيح دقيق لوحدة البيع (حزم أو حبات) وسعة الحزم",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                         TextButton(
                             onClick = { onEdit(invoice) },
@@ -438,12 +446,12 @@ fun InvoiceDetailScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     invoice.items.forEachIndexed { index, item ->
                         if (index > 0) {
                             HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 10.dp),
+                                modifier = Modifier.padding(vertical = 12.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                             )
                         }
@@ -459,32 +467,58 @@ fun InvoiceDetailScreen(
                                 ) {
                                     Text(
                                         text = item.name,
-                                        fontWeight = FontWeight.SemiBold,
+                                        fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp
                                     )
                                     if (item.packageInfo.isNotBlank()) {
                                         PackageBadge(packageText = item.packageInfo)
                                     }
                                 }
-                                if (item.unitsPerPackage > 1.0) {
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                // Unit & Capacity Badge
+                                Surface(
+                                    color = if (item.saleUnit == SaleUnit.PACKAGE) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
                                     Text(
-                                        text = "${formatCurrency(item.unitPrice)} (سعر السلعة) × (${if (item.unitsPerPackage == item.unitsPerPackage.toLong().toDouble()) item.unitsPerPackage.toLong().toString() else item.unitsPerPackage.toString()} حبة بالحزمة) × ${if (item.packagesCount == item.packagesCount.toLong().toDouble()) item.packagesCount.toLong().toString() else item.packagesCount.toString()} حزمة",
+                                        text = "${item.saleUnit.iconText} بيع بـ ${item.saleUnit.labelAr} (سعة الحزمة: ${formatQuantity(item.unitsPerPackage)} حبة)",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (item.saleUnit == SaleUnit.PACKAGE) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                if (item.saleUnit == SaleUnit.PACKAGE) {
+                                    Text(
+                                        text = "${formatCurrency(item.unitPrice)} (سعر الحبة) × (${formatQuantity(item.unitsPerPackage)} حبة بالحزمة) × ${formatQuantity(item.packagesCount)} حزمة",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Text(
-                                        text = "سعر الحزمة الواحدة: ${formatCurrency(item.packagePrice)}",
+                                        text = "سعر الحزمة الواحدة: ${formatCurrency(item.packagePrice)} • إجمالي القطع: ${formatQuantity(item.effectiveQuantity)} قطعة",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Medium
                                     )
                                 } else {
                                     Text(
-                                        text = "${item.quantity} × ${formatCurrency(item.unitPrice)}",
+                                        text = "${formatQuantity(item.quantity)} حبة مفردة × ${formatCurrency(item.unitPrice)}",
                                         fontSize = 12.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Text(
+                                        text = "بيع قطاعي بالحبة (سعة الحزمة للمنتج: ${formatQuantity(item.unitsPerPackage)} حبة)",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        fontWeight = FontWeight.Medium
+                                    )
                                 }
+
                                 if (item.description.isNotBlank()) {
                                     Text(
                                         text = item.description,
@@ -493,10 +527,11 @@ fun InvoiceDetailScreen(
                                     )
                                 }
                             }
+
                             Text(
                                 text = formatCurrency(item.total),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
+                                fontSize = 15.sp,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
